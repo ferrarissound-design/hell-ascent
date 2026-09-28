@@ -1,9 +1,11 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Lighting = game:GetService("Lighting")
+local AssetService = game:GetService("AssetService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("GameConfig"))
+local AssetConfig = require(Shared:WaitForChild("AssetConfig"))
 
 local world = workspace:FindFirstChild("HellAscentWorld")
 if world then
@@ -185,6 +187,130 @@ local function makeCheckpoint(info)
 			cooldown[player] = nil
 		end)
 	end)
+end
+
+local function createCreatorMeshTemplate(assetInfo)
+	local success, result = pcall(function()
+		return AssetService:CreateMeshPartAsync(
+			Content.fromUri("rbxassetid://" .. tostring(assetInfo.id)),
+			{
+				CollisionFidelity = Enum.CollisionFidelity.Box,
+				RenderFidelity = Enum.RenderFidelity.Automatic,
+			}
+		)
+	end)
+
+	if not success or not result then
+		warn("[HELL ASCENT] Creator asset failed:", assetInfo.name, assetInfo.id, result)
+		return nil
+	end
+
+	result.Name = assetInfo.name
+	result.Anchored = true
+	result.CanCollide = false
+	result.CastShadow = true
+	return result
+end
+
+local function placeCreatorClone(template, name, size, cframe, color, parent)
+	if not template then
+		return nil
+	end
+
+	local clone = template:Clone()
+	clone.Name = name
+	clone.Size = size
+	clone.CFrame = cframe
+	clone.Anchored = true
+	clone.CanCollide = false
+	clone.Color = color or Color3.fromRGB(95, 78, 68)
+	clone.Parent = parent or world
+	return clone
+end
+
+local function decorateWithCreatorAssets()
+	local decoration = Instance.new("Folder")
+	decoration.Name = "CreatorStoreDecoration"
+	decoration.Parent = world
+
+	local deadTree = createCreatorMeshTemplate(AssetConfig.DeadTree)
+	local skull = createCreatorMeshTemplate(AssetConfig.Skull)
+	local chain = createCreatorMeshTemplate(AssetConfig.Chain)
+	local tombstone = createCreatorMeshTemplate(AssetConfig.Tombstone)
+
+	local treePlacements = {
+		{Vector3.new(-72, 7, 164), 14, -18},
+		{Vector3.new(74, 7, 118), 12, 22},
+		{Vector3.new(-78, 7, -48), 13, 12},
+		{Vector3.new(72, 7, -92), 11, -28},
+		{Vector3.new(-45, 7, -278), 10, 8},
+		{Vector3.new(52, 7, -300), 12, -14},
+	}
+
+	for index, data in ipairs(treePlacements) do
+		placeCreatorClone(
+			deadTree,
+			"DeadTree_" .. index,
+			Vector3.new(data[2], data[2] * 1.8, data[2]),
+			CFrame.new(data[1]) * CFrame.Angles(0, math.rad(data[3]), 0),
+			Color3.fromRGB(53, 43, 39),
+			decoration
+		)
+	end
+
+	local gravePlacements = {
+		Vector3.new(-52, 5, -38),
+		Vector3.new(-35, 5, -58),
+		Vector3.new(-58, 5, -78),
+		Vector3.new(40, 5, -36),
+		Vector3.new(58, 5, -60),
+		Vector3.new(36, 5, -83),
+	}
+
+	for index, position in ipairs(gravePlacements) do
+		placeCreatorClone(
+			tombstone,
+			"Tombstone_" .. index,
+			Vector3.new(5, 9, 3),
+			CFrame.new(position) * CFrame.Angles(0, math.rad((index * 31) % 70 - 35), 0),
+			Color3.fromRGB(96, 88, 82),
+			decoration
+		)
+
+		placeCreatorClone(
+			skull,
+			"Skull_" .. index,
+			Vector3.new(2.5, 2.5, 2.5),
+			CFrame.new(position + Vector3.new((index % 2 == 0) and 4 or -4, -0.4, 3)),
+			Color3.fromRGB(184, 169, 137),
+			decoration
+		)
+	end
+
+	local chainPlacements = {
+		CFrame.new(-18, 24, -168) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame.new(18, 28, -187) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame.new(-18, 26, -208) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame.new(18, 30, -229) * CFrame.Angles(0, 0, math.rad(90)),
+	}
+
+	for index, cframe in ipairs(chainPlacements) do
+		placeCreatorClone(
+			chain,
+			"HangingChain_" .. index,
+			Vector3.new(4, 24, 4),
+			cframe,
+			Color3.fromRGB(67, 58, 55),
+			decoration
+		)
+	end
+
+	if deadTree then deadTree:Destroy() end
+	if skull then skull:Destroy() end
+	if chain then chain:Destroy() end
+	if tombstone then tombstone:Destroy() end
+
+	print("[HELL ASCENT] Creator Store decoration pass finished")
 end
 
 local function buildWorld()
@@ -410,6 +536,7 @@ local function buildWorld()
 	end
 
 	print("[HELL ASCENT] Layer One world generated successfully")
+	task.spawn(decorateWithCreatorAssets)
 end
 
 local function moveCharacterToCheckpoint(player, character)
