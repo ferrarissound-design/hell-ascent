@@ -1,11 +1,10 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local Lighting = game:GetService("Lighting")
-local AssetService = game:GetService("AssetService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("GameConfig"))
-local AssetConfig = require(Shared:WaitForChild("AssetConfig"))
 
 local world = workspace:FindFirstChild("HellAscentWorld")
 if world then
@@ -189,7 +188,9 @@ local function makeCheckpoint(info)
 	end)
 end
 
-local function sanitizeCreatorAsset(root)
+local TEMPLATE_FOLDER_NAME = "HellAscentAssets"
+
+local function sanitizeLocalTemplate(root)
 	for _, descendant in ipairs(root:GetDescendants()) do
 		if descendant:IsA("LuaSourceContainer") then
 			descendant:Destroy()
@@ -214,56 +215,50 @@ local function sanitizeCreatorAsset(root)
 	end
 end
 
-local function loadCreatorAssetTemplate(assetInfo)
-	local success, loaded = pcall(function()
-		return AssetService:LoadAssetAsync(assetInfo.id)
-	end)
-
-	if not success or not loaded then
-		warn(
-			"[HELL ASCENT] Creator asset failed:",
-			assetInfo.name,
-			assetInfo.id,
-			loaded
-		)
+local function asModel(instance)
+	if not instance then
 		return nil
 	end
 
-	local model
-	if loaded:IsA("Model") then
-		model = loaded
-	else
-		model = Instance.new("Model")
-		loaded.Parent = model
+	if instance:IsA("Model") then
+		return instance
 	end
 
-	model.Name = assetInfo.name
-	sanitizeCreatorAsset(model)
+	local model = Instance.new("Model")
+	model.Name = instance.Name
+	instance:Clone().Parent = model
+	return model
+end
 
-	local hasGeometry = false
-	for _, descendant in ipairs(model:GetDescendants()) do
-		if descendant:IsA("BasePart") then
-			hasGeometry = true
-			break
+local function findLocalTemplate(templateName)
+	local roots = {
+		ServerStorage:FindFirstChild(TEMPLATE_FOLDER_NAME),
+		workspace:FindFirstChild(TEMPLATE_FOLDER_NAME),
+		ServerStorage,
+		workspace,
+	}
+
+	for _, root in ipairs(roots) do
+		if root then
+			local found = root:FindFirstChild(templateName)
+			if found then
+				local model = asModel(found)
+				if model ~= found then
+					model.Name = templateName
+				end
+				sanitizeLocalTemplate(model)
+				print("[HELL ASCENT] Local template found:", templateName)
+				return model
+			end
 		end
 	end
 
-	if not hasGeometry then
-		warn(
-			"[HELL ASCENT] Creator asset had no usable geometry:",
-			assetInfo.name,
-			assetInfo.id
-		)
-		model:Destroy()
-		return nil
-	end
-
-	print(
-		"[HELL ASCENT] Creator asset loaded:",
-		assetInfo.name,
-		assetInfo.id
+	warn(
+		"[HELL ASCENT] Missing local template:",
+		templateName,
+		"- add it to ServerStorage/" .. TEMPLATE_FOLDER_NAME
 	)
-	return model
+	return nil
 end
 
 local function tintModel(model, color)
@@ -278,7 +273,7 @@ local function tintModel(model, color)
 	end
 end
 
-local function placeCreatorClone(template, name, targetHeight, cframe, color, parent, grounded)
+local function placeLocalClone(template, name, targetHeight, cframe, color, parent, grounded)
 	if not template then
 		return nil
 	end
@@ -286,7 +281,7 @@ local function placeCreatorClone(template, name, targetHeight, cframe, color, pa
 	local clone = template:Clone()
 	clone.Name = name
 	clone.Parent = parent or world
-	sanitizeCreatorAsset(clone)
+	sanitizeLocalTemplate(clone)
 
 	local _, initialSize = clone:GetBoundingBox()
 	if initialSize.Y > 0.01 then
@@ -296,7 +291,7 @@ local function placeCreatorClone(template, name, targetHeight, cframe, color, pa
 		end)
 
 		if not scaled then
-			warn("[HELL ASCENT] Could not scale Creator asset:", name)
+			warn("[HELL ASCENT] Could not scale local template:", name)
 		end
 	end
 
@@ -313,15 +308,15 @@ local function placeCreatorClone(template, name, targetHeight, cframe, color, pa
 	return clone
 end
 
-local function decorateWithCreatorAssets()
+local function decorateWithLocalTemplates()
 	local decoration = Instance.new("Folder")
-	decoration.Name = "CreatorStoreDecoration"
+	decoration.Name = "LocalAssetDecoration"
 	decoration.Parent = world
 
-	local deadTree = loadCreatorAssetTemplate(AssetConfig.DeadTree)
-	local skull = loadCreatorAssetTemplate(AssetConfig.Skull)
-	local chain = loadCreatorAssetTemplate(AssetConfig.Chain)
-	local tombstone = loadCreatorAssetTemplate(AssetConfig.Tombstone)
+	local deadTree = findLocalTemplate("HellTree")
+	local skull = findLocalTemplate("HellSkull")
+	local chain = findLocalTemplate("HellChain")
+	local tombstone = findLocalTemplate("HellTombstone")
 
 	local loadedCount = 0
 	for _, template in ipairs({deadTree, skull, chain, tombstone}) do
@@ -340,9 +335,9 @@ local function decorateWithCreatorAssets()
 	}
 
 	for index, data in ipairs(treePlacements) do
-		placeCreatorClone(
+		placeLocalClone(
 			deadTree,
-			"CreatorDeadTree_" .. index,
+			"HellTree_" .. index,
 			data[2],
 			CFrame.new(data[1]) * CFrame.Angles(0, math.rad(data[3]), 0),
 			Color3.fromRGB(58, 46, 42),
@@ -361,9 +356,9 @@ local function decorateWithCreatorAssets()
 	}
 
 	for index, position in ipairs(gravePlacements) do
-		placeCreatorClone(
+		placeLocalClone(
 			tombstone,
-			"CreatorTombstone_" .. index,
+			"HellTombstone_" .. index,
 			9,
 			CFrame.new(position) * CFrame.Angles(0, math.rad((index * 31) % 70 - 35), 0),
 			Color3.fromRGB(91, 83, 78),
@@ -371,9 +366,9 @@ local function decorateWithCreatorAssets()
 			true
 		)
 
-		placeCreatorClone(
+		placeLocalClone(
 			skull,
-			"CreatorSkull_" .. index,
+			"HellSkull_" .. index,
 			2.8,
 			CFrame.new(position + Vector3.new((index % 2 == 0) and 4 or -4, 0, 3))
 				* CFrame.Angles(0, math.rad(index * 41), math.rad((index % 2 == 0) and 12 or -9)),
@@ -391,9 +386,9 @@ local function decorateWithCreatorAssets()
 	}
 
 	for index, cframe in ipairs(chainPlacements) do
-		placeCreatorClone(
+		placeLocalClone(
 			chain,
-			"CreatorChain_" .. index,
+			"HellChain_" .. index,
 			24,
 			cframe,
 			Color3.fromRGB(70, 60, 56),
@@ -402,15 +397,15 @@ local function decorateWithCreatorAssets()
 		)
 	end
 
-	if deadTree then deadTree:Destroy() end
-	if skull then skull:Destroy() end
-	if chain then chain:Destroy() end
-	if tombstone then tombstone:Destroy() end
+	if deadTree and deadTree.Parent == nil then deadTree:Destroy() end
+	if skull and skull.Parent == nil then skull:Destroy() end
+	if chain and chain.Parent == nil then chain:Destroy() end
+	if tombstone and tombstone.Parent == nil then tombstone:Destroy() end
 
 	print(
-		"[HELL ASCENT] Creator Store decoration pass finished:",
+		"[HELL ASCENT] Local asset decoration pass finished:",
 		loadedCount,
-		"/ 4 asset types loaded"
+		"/ 4 template types found"
 	)
 end
 
@@ -637,7 +632,7 @@ local function buildWorld()
 	end
 
 	print("[HELL ASCENT] Layer One world generated successfully")
-	task.spawn(decorateWithCreatorAssets)
+	task.spawn(decorateWithLocalTemplates)
 end
 
 local function moveCharacterToCheckpoint(player, character)
