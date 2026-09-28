@@ -1,0 +1,28 @@
+{
+  "name": "HellAscent",
+  "tree": {
+    "$className": "DataModel",
+    "Workspace": {
+      "$properties": {
+        "StreamingEnabled": true
+      }
+    },
+    "ReplicatedStorage": {
+      "Shared": {
+        "$path": "src/shared"
+      }
+    },
+    "ServerScriptService": {
+      "HellAscentServer": {
+        "$path": "src/server"
+      }
+    },
+    "StarterPlayer": {
+      "StarterPlayerScripts": {
+        "HellAscentClient": {
+          "$path": "src/client"
+        }
+      }
+    }
+  }
+}
