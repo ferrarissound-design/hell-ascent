@@ -729,7 +729,7 @@ local function getWardenParts()
 end
 
 local function reportWardenObserved(observed, now, broken)
-	if broken ~= 1 then
+	if broken < 1 or broken > 2 then
 		if lastWardenObservedState then
 			event:FireServer("wardenObserved", false)
 		end
@@ -800,7 +800,9 @@ local function updateWardenFear(now)
 		end
 	end
 
-	reportWardenObserved(visible and distance <= (Config.Warden.Stages[1].DetectionRange or awarenessRange), now, broken)
+	local observationStage = math.clamp(broken, 1, 2)
+	local observationRange = Config.Warden.Stages[observationStage].DetectionRange or awarenessRange
+	reportWardenObserved(visible and distance <= observationRange, now, broken)
 
 	local span = math.max(1, awarenessRange - criticalRange)
 	local proximity = 1 - math.clamp((distance - criticalRange) / span, 0, 1)
@@ -942,9 +944,9 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "wardenAwakened" then
 		showToast("門番が目を覚ました")
 	elseif kind == "wardenHunting" then
-		showToast("THE WARDEN が追ってくる")
+		showToast("見ても止まらない。視線で鈍らせろ")
 	elseif kind == "wardenUnbound" then
-		showToast("門番が解き放たれた。走れ")
+		showToast("視線はもう効かない。BLACK GATEへ走れ")
 	elseif kind == "wardenStrike" then
 		flashDamage()
 		showToast("WARDENの攻撃を受けた")
