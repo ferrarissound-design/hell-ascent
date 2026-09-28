@@ -323,7 +323,7 @@ ContextActionService:BindAction(
 	Enum.KeyCode.ButtonL3
 )
 ContextActionService:SetTitle("HellSprint", "走る")
-ContextActionService:SetPosition("HellSprint", UDim2.new(1, -92, 1, -118))
+ContextActionService:SetPosition("HellSprint", UDim2.new(1, -172, 1, -138))
 
 local function showToast(text)
 	toastSerial += 1
