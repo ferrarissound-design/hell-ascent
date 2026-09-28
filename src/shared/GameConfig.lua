@@ -35,6 +35,12 @@ Config.FinalRun = {
 	MinimumStartStamina = 72,
 }
 
+Config.Safety = {
+	VoidY = -45,
+	CheckInterval = 0.5,
+	VoidRescueGraceSeconds = 2,
+}
+
 Config.Warden = {
 	SpawnPosition = Vector3.new(0, 8, -286),
 	Damage = 34,
