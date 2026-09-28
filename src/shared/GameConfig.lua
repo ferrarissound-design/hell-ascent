@@ -16,7 +16,7 @@ Config.AshRift = {
 	Position = Vector3.new(62, 8, -88),
 	Destination = Vector3.new(0, 8, -214),
 	HealthCost = 25,
-	MinimumSeals = 1,
+	MinimumSeals = 2,
 	ArrivalGraceSeconds = 1.25,
 }
 
