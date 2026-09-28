@@ -273,6 +273,94 @@ local function tintModel(model, color)
 	end
 end
 
+local function makeFallbackRockTemplate()
+	local model = Instance.new("Model")
+	model.Name = "GeneratedHellRock"
+
+	local pieces = {
+		{Vector3.new(3.8, 2.2, 3.1), Vector3.new(0, 0.7, 0), Vector3.new(8, 18, 3)},
+		{Vector3.new(2.7, 1.8, 2.4), Vector3.new(1.6, 1.2, -0.7), Vector3.new(-12, 31, 8)},
+		{Vector3.new(2.2, 1.4, 2.0), Vector3.new(-1.4, 1.0, 0.8), Vector3.new(16, -24, -7)},
+	}
+
+	for i, data in ipairs(pieces) do
+		local part = Instance.new("Part")
+		part.Name = "Rock_" .. i
+		part.Size = data[1]
+		part.CFrame = CFrame.new(data[2])
+			* CFrame.Angles(math.rad(data[3].X), math.rad(data[3].Y), math.rad(data[3].Z))
+		part.Anchored = true
+		part.CanCollide = false
+		part.Material = Enum.Material.Slate
+		part.Color = Color3.fromRGB(92, 78, 72)
+		part.Parent = model
+	end
+
+	return model
+end
+
+local function makeFallbackChainTemplate()
+	local model = Instance.new("Model")
+	model.Name = "GeneratedHellChain"
+
+	for i = 1, 7 do
+		local link = Instance.new("Part")
+		link.Name = "Link_" .. i
+		link.Shape = Enum.PartType.Cylinder
+		link.Size = Vector3.new(0.6, 2.1, 2.1)
+		link.CFrame = CFrame.new(0, (i - 1) * 1.55, 0)
+			* CFrame.Angles(0, 0, math.rad(90))
+			* CFrame.Angles(0, math.rad((i % 2) * 90), 0)
+		link.Anchored = true
+		link.CanCollide = false
+		link.Material = Enum.Material.Metal
+		link.Color = Color3.fromRGB(65, 56, 53)
+		link.Parent = model
+	end
+
+	return model
+end
+
+local function makeFallbackTombstoneTemplate()
+	local model = Instance.new("Model")
+	model.Name = "GeneratedHellTombstone"
+
+	local slab = Instance.new("Part")
+	slab.Name = "Stone"
+	slab.Size = Vector3.new(3.6, 5.4, 1.2)
+	slab.CFrame = CFrame.new(0, 2.7, 0)
+	slab.Anchored = true
+	slab.CanCollide = false
+	slab.Material = Enum.Material.Slate
+	slab.Color = Color3.fromRGB(86, 78, 74)
+	slab.Parent = model
+
+	local crown = Instance.new("Part")
+	crown.Name = "Crown"
+	crown.Shape = Enum.PartType.Cylinder
+	crown.Size = Vector3.new(1.2, 3.6, 3.6)
+	crown.CFrame = CFrame.new(0, 5.35, 0) * CFrame.Angles(0, 0, math.rad(90))
+	crown.Anchored = true
+	crown.CanCollide = false
+	crown.Material = Enum.Material.Slate
+	crown.Color = slab.Color
+	crown.Parent = model
+
+	return model
+end
+
+local function useTemplateOrFallback(templateName, fallbackFactory)
+	local template = findLocalTemplate(templateName)
+	if template then
+		return template, true
+	end
+
+	local fallback = fallbackFactory()
+	sanitizeLocalTemplate(fallback)
+	print("[HELL ASCENT] Generated fallback decoration:", templateName)
+	return fallback, false
+end
+
 local function placeLocalClone(template, name, targetHeight, cframe, color, parent, grounded)
 	if not template then
 		return nil
@@ -314,16 +402,15 @@ local function decorateWithLocalTemplates()
 	decoration.Parent = world
 
 	local deadTree = findLocalTemplate("HellTree")
-	local skull = findLocalTemplate("HellSkull")
-	local chain = findLocalTemplate("HellChain")
-	local tombstone = findLocalTemplate("HellTombstone")
+	local skull, skullIsLocal = useTemplateOrFallback("HellSkull", makeFallbackRockTemplate)
+	local chain, chainIsLocal = useTemplateOrFallback("HellChain", makeFallbackChainTemplate)
+	local tombstone, tombstoneIsLocal = useTemplateOrFallback("HellTombstone", makeFallbackTombstoneTemplate)
 
-	local loadedCount = 0
-	for _, template in ipairs({deadTree, skull, chain, tombstone}) do
-		if template then
-			loadedCount += 1
-		end
-	end
+	local localTemplateCount = 0
+	if deadTree then localTemplateCount += 1 end
+	if skullIsLocal then localTemplateCount += 1 end
+	if chainIsLocal then localTemplateCount += 1 end
+	if tombstoneIsLocal then localTemplateCount += 1 end
 
 	local treePlacements = {
 		{Vector3.new(-72, 4, 164), 24, -18},
@@ -403,9 +490,9 @@ local function decorateWithLocalTemplates()
 	if tombstone and tombstone.Parent == nil then tombstone:Destroy() end
 
 	print(
-		"[HELL ASCENT] Local asset decoration pass finished:",
-		loadedCount,
-		"/ 4 template types found"
+		"[HELL ASCENT] Decoration pass finished:",
+		localTemplateCount,
+		"/ 4 local templates used; generated fallbacks filled the rest"
 	)
 end
 
