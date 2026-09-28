@@ -40,21 +40,54 @@ local function serverNow()
 	return workspace:GetServerTimeNow()
 end
 
+local function resetWardenHomeIfSafe(exceptPlayer)
+	for _, otherPlayer in ipairs(Players:GetPlayers()) do
+		if otherPlayer ~= exceptPlayer then
+			local otherState = runStates[otherPlayer.UserId]
+			if otherState
+				and otherState.started
+				and not otherState.expired
+				and not otherState.escaped
+				and otherState.sealCount > 0
+			then
+				return
+			end
+		end
+	end
+
+	if not wardenModel or not wardenModel.Parent or not wardenModel.PrimaryPart then
+		return
+	end
+
+	wardenModel:PivotTo(CFrame.new(wardenHome))
+	local root = wardenModel.PrimaryPart
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+
+	local humanoid = wardenModel:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.WalkSpeed = 0
+		humanoid:MoveTo(root.Position)
+	end
+end
+
 local function beginRun(player)
 	local state = {
-		deadline = serverNow() + Config.RunDurationSeconds,
+		deadline = nil,
+		started = false,
 		seals = {},
 		sealCount = 0,
 		deaths = 0,
 		escaped = false,
 		expired = false,
-		wardenGraceUntil = serverNow() + Config.RespawnGraceSeconds,
+		wardenGraceUntil = math.huge,
 	}
 
 	runStates[player.UserId] = state
 	checkpoints[player.UserId] = CFrame.new(Config.SpawnPosition)
+	wardenAttackTimes[player.UserId] = nil
 
-	player:SetAttribute("RunDeadline", state.deadline)
+	player:SetAttribute("RunDeadline", nil)
 	player:SetAttribute("SealsBroken", 0)
 	player:SetAttribute("TotalSeals", #Config.Seals)
 	player:SetAttribute("GateOpen", false)
@@ -62,7 +95,26 @@ local function beginRun(player)
 	player:SetAttribute("LayerOneEscaped", false)
 	player:SetAttribute("DeathsThisRun", 0)
 
+	resetWardenHomeIfSafe(player)
+
 	event:FireClient(player, "runStart", {
+		duration = Config.RunDurationSeconds,
+	})
+end
+
+local function startRunClock(player)
+	local state = runStates[player.UserId]
+	if not state or state.started or state.expired or state.escaped then
+		return
+	end
+
+	local now = serverNow()
+	state.started = true
+	state.deadline = now + Config.RunDurationSeconds
+	state.wardenGraceUntil = now + Config.RespawnGraceSeconds
+
+	player:SetAttribute("RunDeadline", state.deadline)
+	event:FireClient(player, "runClockStarted", {
 		deadline = state.deadline,
 		duration = Config.RunDurationSeconds,
 	})
@@ -533,7 +585,7 @@ local function getWardenTarget()
 			local stageConfig = Config.Warden.Stages[stage]
 			local distance = (root.Position - origin).Magnitude
 			if distance <= stageConfig.DetectionRange then
-				if stage > bestStage or (stage == bestStage and distance < bestDistance) then
+				if distance < bestDistance then
 					bestPlayer = player
 					bestStage = stage
 					bestDistance = distance
@@ -1156,7 +1208,7 @@ local function buildWorld()
 		player:SetAttribute("LayerOneEscaped", true)
 		event:FireClient(player, "escaped", {
 			layer = Config.LayerTitle,
-			remaining = math.max(0, math.ceil(state.deadline - serverNow())),
+			remaining = state.deadline and math.max(0, math.ceil(state.deadline - serverNow())) or 0,
 			deaths = state.deaths,
 		})
 
@@ -1225,12 +1277,14 @@ local function moveCharacterToCheckpoint(player, character)
 end
 
 local function bindCharacter(player, character)
-	task.spawn(moveCharacterToCheckpoint, player, character)
+	moveCharacterToCheckpoint(player, character)
 
 	local humanoid = character:WaitForChild("Humanoid", 8)
 	if not humanoid then
 		return
 	end
+
+	startRunClock(player)
 
 	local state = runStates[player.UserId]
 	if state then
@@ -1244,7 +1298,9 @@ local function bindCharacter(player, character)
 		end
 
 		state.deaths += 1
-		state.deadline -= Config.DeathPenaltySeconds
+		if state.deadline then
+			state.deadline -= Config.DeathPenaltySeconds
+		end
 		player:SetAttribute("DeathsThisRun", state.deaths)
 		player:SetAttribute("RunDeadline", state.deadline)
 
@@ -1303,7 +1359,13 @@ task.spawn(function()
 
 		for _, player in ipairs(Players:GetPlayers()) do
 			local state = runStates[player.UserId]
-			if state and not state.expired and not state.escaped and now >= state.deadline then
+			if state
+				and state.started
+				and state.deadline
+				and not state.expired
+				and not state.escaped
+				and now >= state.deadline
+			then
 				state.expired = true
 				player:SetAttribute("RunExpired", true)
 				event:FireClient(player, "expired")
