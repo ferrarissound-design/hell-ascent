@@ -73,6 +73,12 @@ Then in Roblox Studio:
 
 See `docs/RELEASE_2026-09-30.md` for the final smoke test.
 
+Release support files:
+
+- `docs/ROBLOX_PUBLISHING.md` - title, descriptions, controls and recommended first-release settings
+- `docs/SCREENSHOT_PLAN.md` - three screenshots to capture during the final run
+- `docs/RELEASE_NOTES_2026-09-30.md` - first-release feature summary
+
 ## Project structure
 
 ```text
