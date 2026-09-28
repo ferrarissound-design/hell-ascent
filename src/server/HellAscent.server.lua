@@ -1154,7 +1154,11 @@ local function buildWorld()
 
 		state.escaped = true
 		player:SetAttribute("LayerOneEscaped", true)
-		event:FireClient(player, "escaped", Config.LayerTitle)
+		event:FireClient(player, "escaped", {
+			layer = Config.LayerTitle,
+			remaining = math.max(0, math.ceil(state.deadline - serverNow())),
+			deaths = state.deaths,
+		})
 
 		task.delay(3, function()
 			exitCooldown[player] = nil
@@ -1265,6 +1269,20 @@ end
 
 buildWorld()
 runWardenAI()
+
+event.OnServerEvent:Connect(function(player, kind)
+	if kind ~= "restartRun" then
+		return
+	end
+
+	local state = runStates[player.UserId]
+	if not state or not state.escaped then
+		return
+	end
+
+	beginRun(player)
+	player:LoadCharacter()
+end)
 
 Players.PlayerAdded:Connect(setupPlayer)
 
