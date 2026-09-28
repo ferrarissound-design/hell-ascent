@@ -1021,9 +1021,9 @@ local function updateNavigation()
 			math.floor(gateDistance + 0.5),
 			wardenText
 		)
-	end
-
-	if wardenRoot and (player:GetAttribute("SealsBroken") or 0) > 0 then
+		text = "走れ。視線はもう効かない"
+		navLabel.TextColor3 = Color3.fromRGB(255, 112, 62)
+	elseif wardenRoot and (player:GetAttribute("SealsBroken") or 0) > 0 then
 		local wardenDistance = (wardenRoot.Position - root.Position).Magnitude
 		local wardenArrow = directionArrow(root.Position, wardenRoot.Position)
 		if wardenDistance <= 25 then
