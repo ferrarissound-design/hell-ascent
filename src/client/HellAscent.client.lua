@@ -29,6 +29,8 @@ local hellWorld = nil
 local currentEscalationStage = -1
 local stageBannerSerial = 0
 local wardenSeenThisRun = false
+local lastWardenObservedReport = 0
+local lastWardenObservedState = false
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
@@ -726,14 +728,32 @@ local function getWardenParts()
 	return warden, root, faceSlit
 end
 
+local function reportWardenObserved(observed, now, broken)
+	if broken ~= 1 then
+		if lastWardenObservedState then
+			event:FireServer("wardenObserved", false)
+		end
+		lastWardenObservedState = false
+		lastWardenObservedReport = now
+		return
+	end
+
+	if observed ~= lastWardenObservedState or now - lastWardenObservedReport >= 0.3 then
+		lastWardenObservedState = observed
+		lastWardenObservedReport = now
+		event:FireServer("wardenObserved", observed)
+	end
+end
+
 local function updateWardenFear(now)
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	local camera = workspace.CurrentCamera
 	local broken = player:GetAttribute("SealsBroken") or 0
-	local _, wardenRoot, faceSlit = getWardenParts()
+	local warden, wardenRoot, faceSlit = getWardenParts()
 
 	if not playerRoot or not camera or not wardenRoot or broken <= 0 then
+		reportWardenObserved(false, now, broken)
 		wardenPressure.BackgroundTransparency = 1
 		if faceSlit then
 			local faceLight = faceSlit:FindFirstChildOfClass("PointLight")
@@ -750,6 +770,7 @@ local function updateWardenFear(now)
 	local criticalRange = Config.Warden.FearCriticalRange or 28
 
 	if distance >= awarenessRange then
+		reportWardenObserved(false, now, broken)
 		wardenPressure.BackgroundTransparency = 1
 		if faceSlit then
 			local faceLight = faceSlit:FindFirstChildOfClass("PointLight")
@@ -761,8 +782,26 @@ local function updateWardenFear(now)
 		return
 	end
 
-	local screenPoint, onScreen = camera:WorldToViewportPoint(wardenRoot.Position + Vector3.new(0, 4, 0))
+	local targetPoint = wardenRoot.Position + Vector3.new(0, 4, 0)
+	local screenPoint, onScreen = camera:WorldToViewportPoint(targetPoint)
 	local visible = onScreen and screenPoint.Z > 0
+
+	if visible and warden then
+		local raycastParams = RaycastParams.new()
+		raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+		raycastParams.FilterDescendantsInstances = {character}
+		raycastParams.IgnoreWater = true
+
+		local origin = camera.CFrame.Position
+		local direction = targetPoint - origin
+		local result = workspace:Raycast(origin, direction, raycastParams)
+		if result and not result.Instance:IsDescendantOf(warden) then
+			visible = false
+		end
+	end
+
+	reportWardenObserved(visible and distance <= (Config.Warden.Stages[1].DetectionRange or awarenessRange), now, broken)
+
 	local span = math.max(1, awarenessRange - criticalRange)
 	local proximity = 1 - math.clamp((distance - criticalRange) / span, 0, 1)
 	local visibilityFactor = visible and 1 or 0.5
@@ -789,6 +828,11 @@ local function updateWardenFear(now)
 	then
 		wardenSeenThisRun = true
 		showToast("何かがこちらを見ている")
+		task.delay(1.15, function()
+			if wardenSeenThisRun and (player:GetAttribute("SealsBroken") or 0) == 1 then
+				showToast("奴から目を離すな")
+			end
+		end)
 	end
 end
 
@@ -919,6 +963,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 		respawnSafeUntil = 0
 		currentEscalationStage = -1
 		wardenSeenThisRun = false
+		lastWardenObservedState = false
+		lastWardenObservedReport = 0
 		wardenPressure.BackgroundTransparency = 1
 		applyEscalationStage(0, false)
 		timerLabel.Text = "準備中"
