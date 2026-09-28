@@ -208,6 +208,14 @@ event.OnClientEvent:Connect(function(kind, payload)
 		refreshRunStatus()
 	elseif kind == "sealAlreadyBroken" then
 		showToast(payload .. " IS ALREADY BROKEN")
+	elseif kind == "wardenAwakened" then
+		showToast("SOMETHING HAS AWAKENED NEAR THE BLACK GATE.")
+	elseif kind == "wardenHunting" then
+		showToast("THE WARDEN IS HUNTING YOU.")
+	elseif kind == "wardenUnbound" then
+		showToast("THE WARDEN IS UNBOUND. RUN.")
+	elseif kind == "wardenStrike" then
+		showToast("THE WARDEN HAS FOUND YOU.")
 	elseif kind == "gateOpen" then
 		showToast("ALL SEALS BROKEN. BLACK GATE UNSEALED.")
 		refreshRunStatus()
