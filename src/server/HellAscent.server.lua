@@ -441,6 +441,40 @@ local function makeSpike(position, height, tilt)
 	return spike
 end
 
+local function horizontalDistance(a, b)
+	local dx = a.X - b.X
+	local dz = a.Z - b.Z
+	return math.sqrt(dx * dx + dz * dz)
+end
+
+local function decorationPositionIsSafe(position)
+	for _, sealInfo in ipairs(Config.Seals) do
+		if horizontalDistance(position, sealInfo.position) < 24 then
+			return false
+		end
+	end
+
+	for _, checkpoint in ipairs(Config.Checkpoints) do
+		if horizontalDistance(position, checkpoint.position) < 18 then
+			return false
+		end
+	end
+
+	if horizontalDistance(position, Config.AshRift.Position) < 24 then
+		return false
+	end
+
+	if horizontalDistance(position, Config.SpawnPosition) < 22 then
+		return false
+	end
+
+	if horizontalDistance(position, Config.ExitPosition) < 28 then
+		return false
+	end
+
+	return true
+end
+
 local function makeDeadTree(position, scale)
 	local model = Instance.new("Model")
 	model.Name = "DeadTree"
@@ -1523,8 +1557,23 @@ local function buildWorld()
 
 	for x = -70, 70, 35 do
 		if math.abs(x) > 20 then
-			makeSpike(Vector3.new(x, 10, 135 + math.random(-28, 28)), math.random(22, 42), math.random(-12, 12))
-			makeSpike(Vector3.new(x, 8, -45 + math.random(-40, 40)), math.random(18, 36), math.random(-12, 12))
+			local ashSpikePosition = Vector3.new(x, 10, 135 + math.random(-28, 28))
+			if decorationPositionIsSafe(ashSpikePosition) then
+				makeSpike(
+					ashSpikePosition,
+					math.random(22, 42),
+					math.random(-12, 12)
+				)
+			end
+
+			local boneSpikePosition = Vector3.new(x, 8, -45 + math.random(-40, 40))
+			if decorationPositionIsSafe(boneSpikePosition) then
+				makeSpike(
+					boneSpikePosition,
+					math.random(18, 36),
+					math.random(-12, 12)
+				)
+			end
 		end
 	end
 
