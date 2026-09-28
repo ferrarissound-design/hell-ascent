@@ -244,6 +244,47 @@ local function makeCheckpoint(info)
 	marker.Transparency = 0.38
 	marker.CanCollide = false
 
+	local beacon = makePart(
+		"SoulAnchorBeacon_" .. info.name:gsub("%s+", "_"),
+		Vector3.new(2.4, 11, 2.4),
+		CFrame.new(info.position + Vector3.new(0, 4.5, 0)),
+		Color3.fromRGB(184, 48, 26),
+		Enum.Material.Neon
+	)
+	beacon.Transparency = 0.28
+	beacon.CanCollide = false
+	beacon.CanTouch = false
+
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 91, 52)
+	light.Brightness = 2.1
+	light.Range = 26
+	light.Shadows = false
+	light.Parent = beacon
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.fromOffset(170, 42)
+	billboard.StudsOffset = Vector3.new(0, 7, 0)
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 180
+	billboard.Parent = beacon
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 0.25
+	label.BackgroundColor3 = Color3.fromRGB(16, 11, 12)
+	label.BorderSizePixel = 0
+	label.Text = "SOUL ANCHOR"
+	label.TextColor3 = Color3.fromRGB(235, 151, 112)
+	label.TextStrokeTransparency = 0.65
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 14
+	label.Parent = billboard
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = label
+
 	local cooldown = {}
 	marker.Touched:Connect(function(hit)
 		local player = playerFromHit(hit)
