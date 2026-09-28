@@ -17,6 +17,7 @@ Config.AshRift = {
 	Destination = Vector3.new(0, 8, -214),
 	HealthCost = 25,
 	MinimumSeals = 1,
+	ArrivalGraceSeconds = 1.25,
 }
 
 Config.Warden = {
