@@ -1094,22 +1094,27 @@ local function runWardenAI()
 				moveWardenToward(targetRoot.Position, stage, speedOverride)
 			end
 
-			if distance <= Config.Warden.AttackRange then
-				local liveState = runStates[targetPlayer.UserId]
-				local targetStillValid = liveState
-					and not liveState.expired
-					and not liveState.escaped
-					and serverNow() >= (liveState.wardenGraceUntil or 0)
-					and targetPlayer.Character == character
-					and targetHumanoid.Parent == character
-					and targetHumanoid.Health > 0
+			local liveState = runStates[targetPlayer.UserId]
+			local liveCharacter = targetPlayer.Character
+			local liveRoot = liveCharacter and liveCharacter:FindFirstChild("HumanoidRootPart")
+			local liveHumanoid = liveCharacter and liveCharacter:FindFirstChildOfClass("Humanoid")
+			local targetStillValid = liveState
+				and not liveState.expired
+				and not liveState.escaped
+				and serverNow() >= (liveState.wardenGraceUntil or 0)
+				and liveCharacter == character
+				and liveRoot == targetRoot
+				and liveHumanoid == targetHumanoid
+				and liveHumanoid.Health > 0
 
-				if targetStillValid then
+			if targetStillValid then
+				local currentDistance = (liveRoot.Position - root.Position).Magnitude
+				if currentDistance <= Config.Warden.AttackRange then
 					local now = serverNow()
 					local lastAttack = wardenAttackTimes[targetPlayer.UserId] or 0
 					if now - lastAttack >= Config.Warden.AttackCooldown then
 						wardenAttackTimes[targetPlayer.UserId] = now
-						targetHumanoid:TakeDamage(Config.Warden.Damage)
+						liveHumanoid:TakeDamage(Config.Warden.Damage)
 						event:FireClient(targetPlayer, "wardenStrike")
 					end
 				end
