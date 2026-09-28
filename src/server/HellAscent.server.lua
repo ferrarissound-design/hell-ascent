@@ -137,6 +137,53 @@ local function startRunClock(player)
 	})
 end
 
+local function expireRun(player, state)
+	if runStates[player.UserId] ~= state
+		or not state
+		or state.expired
+		or state.escaped
+	then
+		return
+	end
+
+	state.expired = true
+	state.sprintRequested = false
+	state.sprintActive = false
+	player:SetAttribute("SprintActive", false)
+	player:SetAttribute("RunExpired", true)
+	event:FireClient(player, "expired")
+
+	task.delay(3.5, function()
+		if not player.Parent
+			or runStates[player.UserId] ~= state
+			or not state.expired
+			or state.escaped
+		then
+			return
+		end
+
+		beginRun(player)
+		player:LoadCharacter()
+	end)
+end
+
+local function ensureRunStillActive(player, state)
+	if not state
+		or not state.started
+		or state.expired
+		or state.escaped
+	then
+		return false
+	end
+
+	if state.deadline and serverNow() >= state.deadline then
+		expireRun(player, state)
+		return false
+	end
+
+	return true
+end
+
 local function repairPlayerProgress(player, state)
 	if not state then
 		return
@@ -145,7 +192,7 @@ local function repairPlayerProgress(player, state)
 	local repairedCount = 0
 	for _, sealInfo in ipairs(Config.Seals) do
 		local attributeName = "Seal_" .. sealInfo.id
-		local broken = state.seals[sealInfo.id] == true or player:GetAttribute(attributeName) == true
+		local broken = state.seals[sealInfo.id] == true
 		if broken then
 			state.seals[sealInfo.id] = true
 			repairedCount += 1
@@ -171,15 +218,15 @@ local function repairPlayerProgress(player, state)
 		changed = true
 	end
 
-	local gateShouldBeOpen = repairedCount >= #Config.Seals
-	if player:GetAttribute("GateOpen") ~= gateShouldBeOpen then
-		player:SetAttribute("GateOpen", gateShouldBeOpen)
+	local expectedDeadline = state.started and state.deadline or nil
+	if player:GetAttribute("RunDeadline") ~= expectedDeadline then
+		player:SetAttribute("RunDeadline", expectedDeadline)
 		changed = true
 	end
 
-	if gateShouldBeOpen and state.sprintStamina < Config.FinalRun.MinimumStartStamina then
-		state.sprintStamina = Config.FinalRun.MinimumStartStamina
-		player:SetAttribute("SprintStamina", math.floor(state.sprintStamina + 0.5))
+	local gateShouldBeOpen = repairedCount >= #Config.Seals
+	if player:GetAttribute("GateOpen") ~= gateShouldBeOpen then
+		player:SetAttribute("GateOpen", gateShouldBeOpen)
 		changed = true
 	end
 
@@ -263,7 +310,7 @@ end
 
 local function breakSoulSeal(player, sealInfo)
 	local state = runStates[player.UserId]
-	if not state or state.expired or state.escaped then
+	if not ensureRunStillActive(player, state) then
 		return
 	end
 
@@ -667,7 +714,7 @@ local function makeAshRift()
 
 	prompt.Triggered:Connect(function(player)
 		local state = runStates[player.UserId]
-		if not state or not state.started or state.expired or state.escaped then
+		if not ensureRunStillActive(player, state) then
 			return
 		end
 
@@ -1549,7 +1596,7 @@ local function buildWorld()
 		end
 
 		local state = runStates[player.UserId]
-		if not state or state.expired or state.escaped then
+		if not ensureRunStillActive(player, state) then
 			return
 		end
 
@@ -1889,18 +1936,7 @@ task.spawn(function()
 				and not state.escaped
 				and now >= state.deadline
 			then
-				state.expired = true
-				player:SetAttribute("RunExpired", true)
-				event:FireClient(player, "expired")
-
-				task.delay(3.5, function()
-					if not player.Parent then
-						return
-					end
-
-					beginRun(player)
-					player:LoadCharacter()
-				end)
+				expireRun(player, state)
 			end
 		end
 	end
