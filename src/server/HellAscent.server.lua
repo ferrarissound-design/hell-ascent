@@ -734,8 +734,10 @@ local function runWardenAI()
 
 			local distance = (targetRoot.Position - root.Position).Magnitude
 
+			local observed = isWardenObserved(targetPlayer)
+
 			if stage == 1
-				and isWardenObserved(targetPlayer)
+				and observed
 				and distance > (Config.Warden.AttackRange + 2)
 			then
 				humanoid.WalkSpeed = 0
@@ -743,9 +745,13 @@ local function runWardenAI()
 				faceWardenToward(targetRoot.Position)
 			else
 				local speedOverride = nil
+
 				if stage == 1 and distance > Config.Warden.StageOneWatchDistance then
 					speedOverride = Config.Warden.StageOneCreepSpeed
+				elseif stage == 2 and observed then
+					speedOverride = Config.Warden.StageTwoObservedSpeed
 				end
+
 				moveWardenToward(targetRoot.Position, stage, speedOverride)
 			end
 
@@ -1412,7 +1418,12 @@ runWardenAI()
 event.OnServerEvent:Connect(function(player, kind, payload)
 	if kind == "wardenObserved" then
 		local state = runStates[player.UserId]
-		if not state or state.expired or state.escaped or state.sealCount ~= 1 then
+		if not state
+			or state.expired
+			or state.escaped
+			or state.sealCount < 1
+			or state.sealCount > 2
+		then
 			wardenObservations[player.UserId] = nil
 			return
 		end
