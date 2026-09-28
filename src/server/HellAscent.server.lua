@@ -79,6 +79,7 @@ local function beginRun(player)
 		seals = {},
 		sealCount = 0,
 		deaths = 0,
+		checkpointIndex = 0,
 		escaped = false,
 		expired = false,
 		wardenGraceUntil = math.huge,
@@ -286,7 +287,7 @@ local function playerFromHit(hit)
 	return Players:GetPlayerFromCharacter(character), humanoid
 end
 
-local function makeCheckpoint(info)
+local function makeCheckpoint(info, checkpointIndex)
 	local marker = makePart(
 		"Checkpoint_" .. info.name:gsub("%s+", "_"),
 		Vector3.new(30, 1, 16),
@@ -338,20 +339,31 @@ local function makeCheckpoint(info)
 	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = label
 
-	local cooldown = {}
 	marker.Touched:Connect(function(hit)
-		local player = playerFromHit(hit)
-		if not player or cooldown[player] then
+		local player, humanoid = playerFromHit(hit)
+		if not player or not humanoid or humanoid.Health <= 0 then
 			return
 		end
 
-		cooldown[player] = true
-		checkpoints[player.UserId] = CFrame.new(info.position)
-		event:FireClient(player, "checkpoint", info.name)
+		local state = runStates[player.UserId]
+		if not state or state.expired or state.escaped then
+			return
+		end
 
-		task.delay(1.5, function()
-			cooldown[player] = nil
-		end)
+		if checkpointIndex <= (state.checkpointIndex or 0) then
+			return
+		end
+
+		state.checkpointIndex = checkpointIndex
+		checkpoints[player.UserId] = CFrame.new(info.position)
+
+		humanoid.Health = humanoid.MaxHealth
+
+		event:FireClient(player, "checkpoint", {
+			name = info.name,
+			index = checkpointIndex,
+			total = #Config.Checkpoints,
+		})
 	end)
 end
 
@@ -1097,8 +1109,8 @@ local function buildWorld()
 		skullMarker.CanCollide = false
 	end
 
-	for _, checkpoint in ipairs(Config.Checkpoints) do
-		makeCheckpoint(checkpoint)
+	for checkpointIndex, checkpoint in ipairs(Config.Checkpoints) do
+		makeCheckpoint(checkpoint, checkpointIndex)
 	end
 
 	for _, sealInfo in ipairs(Config.Seals) do
