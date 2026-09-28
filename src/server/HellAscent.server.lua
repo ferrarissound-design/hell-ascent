@@ -379,6 +379,8 @@ local function makeCheckpoint(info, checkpointIndex)
 		checkpoints[player.UserId] = CFrame.new(info.position)
 
 		humanoid.Health = humanoid.MaxHealth
+		state.sprintStamina = Config.Sprint.MaxStamina
+		player:SetAttribute("SprintStamina", Config.Sprint.MaxStamina)
 
 		event:FireClient(player, "checkpoint", {
 			name = info.name,
@@ -1579,8 +1581,10 @@ local function bindCharacter(player, character)
 
 		boundState.sprintRequested = false
 		boundState.sprintActive = false
+		boundState.sprintStamina = Config.Sprint.MaxStamina
 		boundState.lastSprintStop = serverNow()
 		player:SetAttribute("SprintActive", false)
+		player:SetAttribute("SprintStamina", Config.Sprint.MaxStamina)
 
 		boundState.deaths += 1
 		if boundState.deadline then
