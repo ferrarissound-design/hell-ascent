@@ -12,6 +12,7 @@ local brokenSeals = {}
 local guideMarkers = {}
 local lastGuideUpdate = 0
 local escapeShown = false
+local endingFrame = nil
 local respawnSafeUntil = 0
 local gateMarker = nil
 
@@ -173,19 +174,26 @@ local function flashDamage()
 	):Play()
 end
 
-local function showEscape()
+local function showEscape(payload)
 	if escapeShown then
 		return
 	end
 	escapeShown = true
 
+	if endingFrame then
+		endingFrame:Destroy()
+		endingFrame = nil
+	end
+
 	local ending = Instance.new("Frame")
+	ending.Name = "EscapeEnding"
 	ending.Size = UDim2.fromScale(1, 1)
 	ending.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 	ending.BackgroundTransparency = 1
 	ending.BorderSizePixel = 0
 	ending.ZIndex = 30
 	ending.Parent = gui
+	endingFrame = ending
 
 	local endingTitle = Instance.new("TextLabel")
 	endingTitle.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -205,7 +213,13 @@ local function showEscape()
 	endingSub.Position = UDim2.new(0.5, 0, 0.54, 0)
 	endingSub.Size = UDim2.new(0.86, 0, 0, 70)
 	endingSub.BackgroundTransparency = 1
-	endingSub.Text = "BLACK GATEを突破した\n次の層はまだ閉ざされている"
+	local remaining = payload and payload.remaining or 0
+	local deaths = payload and payload.deaths or 0
+	endingSub.Text = string.format(
+		"BLACK GATEを突破した\n残り %s   /   死亡 %d回",
+		formatTime(remaining),
+		deaths
+	)
 	endingSub.TextColor3 = Color3.fromRGB(177, 88, 66)
 	endingSub.TextTransparency = 1
 	endingSub.Font = Enum.Font.GothamBold
@@ -213,6 +227,32 @@ local function showEscape()
 	endingSub.TextWrapped = true
 	endingSub.ZIndex = 31
 	endingSub.Parent = ending
+
+	local retry = Instance.new("TextButton")
+	retry.AnchorPoint = Vector2.new(0.5, 0)
+	retry.Position = UDim2.new(0.5, 0, 0.66, 0)
+	retry.Size = UDim2.new(0, 220, 0, 48)
+	retry.BackgroundColor3 = Color3.fromRGB(54, 32, 29)
+	retry.BackgroundTransparency = 0.08
+	retry.BorderSizePixel = 0
+	retry.Text = "もう一度 / RETRY"
+	retry.TextColor3 = Color3.fromRGB(235, 211, 197)
+	retry.Font = Enum.Font.GothamBold
+	retry.TextSize = 17
+	retry.AutoButtonColor = true
+	retry.ZIndex = 31
+	retry.Parent = ending
+
+	local retryCorner = Instance.new("UICorner")
+	retryCorner.CornerRadius = UDim.new(0, 10)
+	retryCorner.Parent = retry
+
+	retry.Activated:Connect(function()
+		retry.Active = false
+		retry.AutoButtonColor = false
+		retry.Text = "再挑戦を開始..."
+		event:FireServer("restartRun")
+	end)
 
 	TweenService:Create(ending, TweenInfo.new(0.8), {BackgroundTransparency = 0.08}):Play()
 	TweenService:Create(endingTitle, TweenInfo.new(0.8), {TextTransparency = 0}):Play()
@@ -520,10 +560,14 @@ event.OnClientEvent:Connect(function(kind, payload)
 		brokenSeals = {}
 		escapeShown = false
 		respawnSafeUntil = 0
+		if endingFrame then
+			endingFrame:Destroy()
+			endingFrame = nil
+		end
 		resetSealVisuals()
 		refreshRunStatus()
 	elseif kind == "escaped" then
-		showEscape()
+		showEscape(payload)
 	end
 end)
 
