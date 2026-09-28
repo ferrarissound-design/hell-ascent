@@ -46,6 +46,14 @@ First release candidate.
 - Session personal best.
 - Immediate RETRY.
 
+### Release safety
+
+- First-run tutorial explains the objective, sprint and death penalty.
+- Per-seal replicated state can rebuild client progression UI.
+- Server periodically repairs progression attributes from authoritative run state.
+- Players who fall below the world through an unintended void are returned to the latest Soul Anchor.
+- Studio Output logs clear time, deaths, ASH RIFT usage and self-repair events.
+
 ### Release stability
 
 - Streaming disabled for the small Layer One map.
