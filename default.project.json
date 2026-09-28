@@ -4,7 +4,7 @@
     "$className": "DataModel",
     "Workspace": {
       "$properties": {
-        "StreamingEnabled": true
+        "StreamingEnabled": false
       }
     },
     "ReplicatedStorage": {
