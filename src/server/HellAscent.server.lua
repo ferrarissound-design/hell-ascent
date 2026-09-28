@@ -1545,6 +1545,43 @@ local function buildWorld()
 	task.spawn(decorateWithLocalTemplates)
 end
 
+local function validateReleaseWorld()
+	local missing = {}
+
+	local requiredNames = {
+		"LakeOfAsh",
+		"AshShore",
+		"BoneField",
+		"ExecutionCauseway",
+		"GatePlaza",
+		"BlackGate",
+		"TheWarden",
+		"AshRiftShortcut",
+	}
+
+	for _, name in ipairs(requiredNames) do
+		if not world:FindFirstChild(name, true) then
+			table.insert(missing, name)
+		end
+	end
+
+	for _, sealInfo in ipairs(Config.Seals) do
+		local sealName = "SoulSeal_" .. sealInfo.id
+		if not world:FindFirstChild(sealName, true) then
+			table.insert(missing, sealName)
+		end
+	end
+
+	workspace:SetAttribute("HellAscentBuild", "2026-09-30-RC")
+	workspace:SetAttribute("HellAscentReady", #missing == 0)
+
+	if #missing == 0 then
+		print("[HELL ASCENT] RELEASE READY - required Layer One systems generated")
+	else
+		warn("[HELL ASCENT] RELEASE CHECK FAILED - missing:", table.concat(missing, ", "))
+	end
+end
+
 local function moveCharacterToCheckpoint(player, character)
 	local target = checkpoints[player.UserId] or CFrame.new(Config.SpawnPosition)
 	local root = character:WaitForChild("HumanoidRootPart", 8)
@@ -1626,6 +1663,7 @@ local function setupPlayer(player)
 end
 
 buildWorld()
+validateReleaseWorld()
 runWardenAI()
 
 event.OnServerEvent:Connect(function(player, kind, payload)
