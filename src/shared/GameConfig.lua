@@ -10,6 +10,20 @@ Config.ExitPosition = Vector3.new(0, 8, -350)
 Config.RunDurationSeconds = 600
 Config.DeathPenaltySeconds = 30
 
+Config.Warden = {
+	SpawnPosition = Vector3.new(0, 8, -286),
+	Damage = 38,
+	AttackRange = 5.5,
+	AttackCooldown = 1.4,
+	RepathSeconds = 0.75,
+	Stages = {
+		[0] = {WalkSpeed = 0, DetectionRange = 0},
+		[1] = {WalkSpeed = 8, DetectionRange = 125},
+		[2] = {WalkSpeed = 11.5, DetectionRange = 185},
+		[3] = {WalkSpeed = 15, DetectionRange = 360},
+	},
+}
+
 Config.Seals = {
 	{
 		id = "CINDERS",
