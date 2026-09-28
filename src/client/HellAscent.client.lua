@@ -367,6 +367,32 @@ local function showToast(text)
 	end)
 end
 
+local function startFirstRunTutorial()
+	if tutorialShown then
+		return
+	end
+	tutorialShown = true
+	local token = tutorialRunToken
+
+	task.delay(1.8, function()
+		if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
+			showToast("目的: 3つの封印を壊して BLACK GATEへ")
+		end
+	end)
+
+	task.delay(4.2, function()
+		if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
+			showToast("走る: Shift / 画面の「走る」 / L3")
+		end
+	end)
+
+	task.delay(6.6, function()
+		if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
+			showToast(string.format("死亡すると残り時間 -%d秒", Config.DeathPenaltySeconds))
+		end
+	end)
+end
+
 local function flashDamage()
 	damageFlash.BackgroundTransparency = 0.78
 	TweenService:Create(
@@ -1179,28 +1205,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 		timerLabel.Text = "残り  " .. formatTime(payload.duration or Config.RunDurationSeconds)
 		timerLabel.TextColor3 = Color3.fromRGB(222, 174, 145)
 
-		if not tutorialShown then
-			tutorialShown = true
-			local token = tutorialRunToken
-
-			task.delay(1.8, function()
-				if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
-					showToast("目的: 3つの封印を壊して BLACK GATEへ")
-				end
-			end)
-
-			task.delay(4.2, function()
-				if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
-					showToast("走る: Shift / 画面の「走る」 / L3")
-				end
-			end)
-
-			task.delay(6.6, function()
-				if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
-					showToast(string.format("死亡すると残り時間 -%d秒", Config.DeathPenaltySeconds))
-				end
-			end)
-		end
+		startFirstRunTutorial()
 	elseif kind == "escaped" then
 		setSprintRequested(false)
 		setSprintControlVisible(false)
@@ -1222,6 +1227,10 @@ end
 
 rebuildBrokenSealsFromAttributes()
 refreshRunStatus()
+
+if player:GetAttribute("RunDeadline") then
+	task.defer(startFirstRunTutorial)
+end
 
 player.CharacterAdded:Connect(function()
 	if (player:GetAttribute("DeathsThisRun") or 0) > 0 then
