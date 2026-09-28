@@ -35,6 +35,7 @@ local runStates = {}
 local wardenModel = nil
 local wardenHome = Config.Warden.SpawnPosition
 local wardenAttackTimes = {}
+local setupPlayers = {}
 
 local function serverNow()
 	return workspace:GetServerTimeNow()
@@ -1286,32 +1287,40 @@ local function bindCharacter(player, character)
 
 	startRunClock(player)
 
-	local state = runStates[player.UserId]
-	if state then
-		state.wardenGraceUntil = serverNow() + Config.RespawnGraceSeconds
+	local boundState = runStates[player.UserId]
+	if boundState then
+		boundState.wardenGraceUntil = serverNow() + Config.RespawnGraceSeconds
 	end
 
 	humanoid.Died:Connect(function()
-		local state = runStates[player.UserId]
-		if not state or state.expired or state.escaped then
+		if runStates[player.UserId] ~= boundState then
 			return
 		end
 
-		state.deaths += 1
-		if state.deadline then
-			state.deadline -= Config.DeathPenaltySeconds
+		if not boundState or boundState.expired or boundState.escaped then
+			return
 		end
-		player:SetAttribute("DeathsThisRun", state.deaths)
-		player:SetAttribute("RunDeadline", state.deadline)
+
+		boundState.deaths += 1
+		if boundState.deadline then
+			boundState.deadline -= Config.DeathPenaltySeconds
+		end
+		player:SetAttribute("DeathsThisRun", boundState.deaths)
+		player:SetAttribute("RunDeadline", boundState.deadline)
 
 		event:FireClient(player, "deathPenalty", {
 			seconds = Config.DeathPenaltySeconds,
-			deaths = state.deaths,
+			deaths = boundState.deaths,
 		})
 	end)
 end
 
 local function setupPlayer(player)
+	if setupPlayers[player] then
+		return
+	end
+	setupPlayers[player] = true
+
 	beginRun(player)
 
 	player.CharacterAdded:Connect(function(character)
@@ -1346,6 +1355,7 @@ Players.PlayerRemoving:Connect(function(player)
 	checkpoints[player.UserId] = nil
 	runStates[player.UserId] = nil
 	wardenAttackTimes[player.UserId] = nil
+	setupPlayers[player] = nil
 end)
 
 for _, player in ipairs(Players:GetPlayers()) do
