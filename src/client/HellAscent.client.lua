@@ -450,27 +450,42 @@ local function showEscape(payload)
 
 	local endingSub = Instance.new("TextLabel")
 	endingSub.AnchorPoint = Vector2.new(0.5, 0)
-	endingSub.Position = UDim2.new(0.5, 0, 0.54, 0)
-	endingSub.Size = UDim2.new(0.86, 0, 0, 70)
+	endingSub.Position = UDim2.new(0.5, 0, 0.53, 0)
+	endingSub.Size = UDim2.new(0.86, 0, 0, 92)
 	endingSub.BackgroundTransparency = 1
-	local remaining = payload and payload.remaining or 0
+
+	local clearSeconds = payload and payload.clearSeconds or 0
+	local bestSeconds = payload and payload.bestSeconds or clearSeconds
 	local deaths = payload and payload.deaths or 0
+	local escapes = payload and payload.escapes or 1
+	local newBest = payload and payload.newBest == true
+	local bestLine
+
+	if newBest and escapes > 1 then
+		bestLine = string.format("NEW BEST  %s   /   脱出 %d回", formatTime(bestSeconds), escapes)
+	else
+		bestLine = string.format("BEST  %s   /   脱出 %d回", formatTime(bestSeconds), escapes)
+	end
+
 	endingSub.Text = string.format(
-		"BLACK GATEを突破した\n残り %s   /   死亡 %d回",
-		formatTime(remaining),
-		deaths
+		"クリア %s   /   死亡 %d回\n%s",
+		formatTime(clearSeconds),
+		deaths,
+		bestLine
 	)
-	endingSub.TextColor3 = Color3.fromRGB(177, 88, 66)
+	endingSub.TextColor3 = newBest and escapes > 1
+		and Color3.fromRGB(232, 128, 82)
+		or Color3.fromRGB(177, 88, 66)
 	endingSub.TextTransparency = 1
 	endingSub.Font = Enum.Font.GothamBold
-	endingSub.TextSize = 19
+	endingSub.TextSize = 18
 	endingSub.TextWrapped = true
 	endingSub.ZIndex = 31
 	endingSub.Parent = ending
 
 	local retry = Instance.new("TextButton")
 	retry.AnchorPoint = Vector2.new(0.5, 0)
-	retry.Position = UDim2.new(0.5, 0, 0.66, 0)
+	retry.Position = UDim2.new(0.5, 0, 0.69, 0)
 	retry.Size = UDim2.new(0, 220, 0, 48)
 	retry.BackgroundColor3 = Color3.fromRGB(54, 32, 29)
 	retry.BackgroundTransparency = 0.08
