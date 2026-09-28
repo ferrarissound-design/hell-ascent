@@ -3,6 +3,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
+local ContextActionService = game:GetService("ContextActionService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -122,6 +123,56 @@ navLabel.TextXAlignment = Enum.TextXAlignment.Left
 navLabel.TextTruncate = Enum.TextTruncate.AtEnd
 navLabel.Parent = header
 
+local staminaPanel = Instance.new("Frame")
+staminaPanel.AnchorPoint = Vector2.new(0.5, 1)
+staminaPanel.Position = UDim2.new(0.5, 0, 1, -22)
+staminaPanel.Size = UDim2.fromOffset(220, 28)
+staminaPanel.BackgroundColor3 = Color3.fromRGB(13, 10, 11)
+staminaPanel.BackgroundTransparency = 0.18
+staminaPanel.BorderSizePixel = 0
+staminaPanel.Visible = false
+staminaPanel.ZIndex = 12
+staminaPanel.Parent = gui
+
+local staminaCorner = Instance.new("UICorner")
+staminaCorner.CornerRadius = UDim.new(0, 8)
+staminaCorner.Parent = staminaPanel
+
+local staminaBarBack = Instance.new("Frame")
+staminaBarBack.Position = UDim2.fromOffset(66, 8)
+staminaBarBack.Size = UDim2.new(1, -76, 0, 12)
+staminaBarBack.BackgroundColor3 = Color3.fromRGB(48, 37, 36)
+staminaBarBack.BackgroundTransparency = 0.12
+staminaBarBack.BorderSizePixel = 0
+staminaBarBack.ZIndex = 13
+staminaBarBack.Parent = staminaPanel
+
+local staminaBarCorner = Instance.new("UICorner")
+staminaBarCorner.CornerRadius = UDim.new(1, 0)
+staminaBarCorner.Parent = staminaBarBack
+
+local staminaFill = Instance.new("Frame")
+staminaFill.Size = UDim2.fromScale(1, 1)
+staminaFill.BackgroundColor3 = Color3.fromRGB(223, 128, 82)
+staminaFill.BorderSizePixel = 0
+staminaFill.ZIndex = 14
+staminaFill.Parent = staminaBarBack
+
+local staminaFillCorner = Instance.new("UICorner")
+staminaFillCorner.CornerRadius = UDim.new(1, 0)
+staminaFillCorner.Parent = staminaFill
+
+local staminaText = Instance.new("TextLabel")
+staminaText.Position = UDim2.fromOffset(8, 0)
+staminaText.Size = UDim2.fromOffset(54, 28)
+staminaText.BackgroundTransparency = 1
+staminaText.Text = "STAMINA"
+staminaText.TextColor3 = Color3.fromRGB(208, 184, 170)
+staminaText.Font = Enum.Font.GothamBold
+staminaText.TextSize = 10
+staminaText.ZIndex = 14
+staminaText.Parent = staminaPanel
+
 local toast = Instance.new("TextLabel")
 toast.AnchorPoint = Vector2.new(0.5, 0.5)
 toast.Position = UDim2.new(0.5, 0, 0.74, 0)
@@ -219,6 +270,32 @@ local function formatTime(seconds)
 	local remainder = seconds % 60
 	return string.format("%02d:%02d", minutes, remainder)
 end
+
+local function setSprintRequested(active)
+	event:FireServer("sprintState", active == true)
+end
+
+local function sprintAction(_, inputState)
+	if inputState == Enum.UserInputState.Begin then
+		setSprintRequested(true)
+	elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+		setSprintRequested(false)
+	end
+
+	return Enum.ContextActionResult.Sink
+end
+
+ContextActionService:UnbindAction("HellSprint")
+ContextActionService:BindAction(
+	"HellSprint",
+	sprintAction,
+	true,
+	Enum.KeyCode.LeftShift,
+	Enum.KeyCode.RightShift,
+	Enum.KeyCode.ButtonL3
+)
+ContextActionService:SetTitle("HellSprint", "走る")
+ContextActionService:SetPosition("HellSprint", UDim2.new(1, -92, 1, -118))
 
 local function showToast(text)
 	toastSerial += 1
@@ -965,6 +1042,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "wardenStrike" then
 		flashDamage()
 		showToast("WARDENの攻撃を受けた")
+	elseif kind == "sprintExhausted" then
+		showToast("息が切れた。スタミナを回復しろ")
 	elseif kind == "ashRiftUsed" then
 		flashDamage()
 		showToast(string.format("ASH RIFT使用  /  HP -%d  /  前方へ転移", payload.cost or Config.AshRift.HealthCost))
@@ -988,6 +1067,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "expired" then
 		showToast("魂が尽きた。最初から再挑戦")
 	elseif kind == "runStart" then
+		setSprintRequested(false)
 		brokenSeals = {}
 		escapeShown = false
 		respawnSafeUntil = 0
@@ -1034,6 +1114,16 @@ end)
 RunService.RenderStepped:Connect(function()
 	local now = os.clock()
 	updateWardenFear(now)
+
+	local stamina = player:GetAttribute("SprintStamina")
+	if stamina == nil then
+		stamina = Config.Sprint.MaxStamina
+	end
+	local sprintActive = player:GetAttribute("SprintActive") == true
+	local staminaRatio = math.clamp(stamina / Config.Sprint.MaxStamina, 0, 1)
+	staminaFill.Size = UDim2.fromScale(staminaRatio, 1)
+	staminaPanel.Visible = sprintActive or stamina < Config.Sprint.MaxStamina
+	staminaText.Text = sprintActive and "SPRINT" or "STAMINA"
 
 	local deadline = player:GetAttribute("RunDeadline")
 	if deadline then
