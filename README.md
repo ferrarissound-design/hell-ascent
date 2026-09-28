@@ -1,69 +1,103 @@
 # HELL ASCENT
 
-A Roblox dark-fantasy escape game.
+Dark-fantasy Roblox escape game.
 
-## Layer One: Ashen Verge
+## Release candidate
 
-The first prototype is already playable through Rojo and is generated from Luau at runtime.
+**Layer One: ASHEN VERGE** is feature-frozen for the 2026-09-30 playtest/release candidate.
 
-### Current route
+The current goal is simple:
 
-1. **Ash Shore** - the soul wakes in Layer One.
-2. **Ash Bridge** - broken slabs over the burning abyss.
-3. **Bone Field** - dead trees, pale markers and the first deeper checkpoint.
-4. **Execution Causeway** - a narrow approach toward the final structure.
-5. **The Black Gate** - crossing the veil clears Layer One.
+1. Break all 3 Soul Seals.
+2. Survive THE WARDEN.
+3. Reach the Black Gate before Soul Decay reaches zero.
 
-### Implemented
+## Current gameplay
 
-- Rojo project structure
-- Runtime-generated Layer One map
-- Hell lighting, fog, atmosphere and color grading
-- Lava / death hazard
-- Respawn checkpoints ("Soul Anchors")
-- Mobile-friendly HUD
-- Intro presentation
-- Giant Black Gate landmark
-- Layer One clear sequence
-- Structure prepared for later Creator Store asset replacement
+- 10-minute Layer One run
+- 3 Soul Seals
+- Soul Anchor checkpoints with HP and stamina recovery
+- 20-second death penalty
+- 6-second safety window after respawn
+- THE WARDEN with three escalating pursuit stages
+- Stage 1: looking at the Warden can stop it
+- Stage 2: looking at it only slows it
+- Stage 3: gaze no longer works
+- Hell Escalation atmosphere as seals break
+- FINAL RUN after the third seal
+- Stamina sprint
+- Optional ASH RIFT shortcut after 2 seals, costing 25 HP
+- Session personal-best clear time
+- Retry flow after escape
+- Mobile-friendly objective markers and navigation
+- Release sanity check in Studio Output
 
-## Run with Rojo
+## Controls
 
-From the repository folder:
+### PC
+
+- Move: standard Roblox controls
+- Sprint: hold **Shift**
+- Interact: **E** / ProximityPrompt
+
+### Mobile
+
+- Move: standard Roblox touch controls
+- Sprint: hold the **走る** button
+- Interact: tap the ProximityPrompt
+
+### Gamepad
+
+- Sprint: **L3**
+
+## Tomorrow's shortest launch path
+
+From PowerShell:
 
 ```powershell
+cd "$HOME\Documents\hell-ascent"
+git pull
 rojo serve
 ```
 
-Then open Roblox Studio, connect with the Rojo plugin, and start a play test.
+Then in Roblox Studio:
+
+1. Stop any running Play session.
+2. Connect the Rojo plugin.
+3. Accept the sync.
+4. Press Play.
+5. Confirm Studio Output contains:
+   `[HELL ASCENT] RELEASE READY - required Layer One systems generated`
+6. Complete one full run.
+7. If the run reaches the Black Gate and RETRY works, publish to Roblox.
+
+See `docs/RELEASE_2026-09-30.md` for the final smoke test.
 
 ## Project structure
 
 ```text
 hell-ascent/
 ├─ default.project.json
+├─ docs/
 └─ src/
    ├─ server/
-   │  └─ HellAscent.server.lua
+   │  ├─ HellAscent.server.lua
+   │  └─ WardenPolish.server.lua
    ├─ client/
    │  └─ HellAscent.client.lua
    └─ shared/
       └─ GameConfig.lua
 ```
 
-## Asset direction
+## Optional local assets
 
-The generated geometry is the prototype skeleton, not the final art.
+The runtime-generated world is playable without Creator Store assets.
 
-Next passes can replace or enrich it with selected Creator Store assets such as:
+If `ServerStorage/HellAscentAssets` contains the optional templates below, the server can use them as decoration:
 
-- ruined structures
-- graves and bone piles
-- chains and torture props
-- dead trees
-- demon / guardian statues
-- rock formations
-- gate ornament
-- ambient audio
+- HellTree
+- HellSkull
+- HellChain
+- HellTombstone
 
-Third-party scripts should not be trusted by default. Visual assets should be inspected and unnecessary scripts removed before use.
+Third-party scripts are stripped from supported decoration templates before they are used.
