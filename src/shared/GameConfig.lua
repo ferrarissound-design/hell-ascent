@@ -8,19 +8,21 @@ Config.SpawnPosition = Vector3.new(0, 8, 170)
 Config.ExitPosition = Vector3.new(0, 8, -350)
 
 Config.RunDurationSeconds = 600
-Config.DeathPenaltySeconds = 30
+Config.DeathPenaltySeconds = 20
+Config.RespawnGraceSeconds = 6
+Config.GateRepelPosition = Vector3.new(0, 8, -322)
 
 Config.Warden = {
 	SpawnPosition = Vector3.new(0, 8, -286),
-	Damage = 38,
-	AttackRange = 5.5,
-	AttackCooldown = 1.4,
+	Damage = 34,
+	AttackRange = 4.6,
+	AttackCooldown = 1.6,
 	RepathSeconds = 0.75,
 	Stages = {
 		[0] = {WalkSpeed = 0, DetectionRange = 0},
-		[1] = {WalkSpeed = 7.5, DetectionRange = 460},
-		[2] = {WalkSpeed = 10.5, DetectionRange = 520},
-		[3] = {WalkSpeed = 14.5, DetectionRange = 650},
+		[1] = {WalkSpeed = 7, DetectionRange = 180},
+		[2] = {WalkSpeed = 10, DetectionRange = 320},
+		[3] = {WalkSpeed = 14.2, DetectionRange = 650},
 	},
 }
 
