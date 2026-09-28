@@ -1899,6 +1899,11 @@ local function moveCharacterToCheckpoint(player, character)
 end
 
 local function bindCharacter(player, character)
+	if character:GetAttribute("HellAscentServerBound") == true then
+		return
+	end
+	character:SetAttribute("HellAscentServerBound", true)
+
 	moveCharacterToCheckpoint(player, character)
 
 	local humanoid = character:WaitForChild("Humanoid", 8)
