@@ -487,6 +487,15 @@ local function applyEscalationStage(stage, announce)
 	stage = math.clamp(stage or 0, 0, 3)
 	local previousStage = currentEscalationStage
 	if stage == currentEscalationStage then
+		if announce then
+			if stage == 1 then
+				showEscalationBanner("HELL STIRS", false)
+			elseif stage == 2 then
+				showEscalationBanner("THE VEIL THINS", false)
+			elseif stage == 3 then
+				showEscalationBanner("RUN", true)
+			end
+		end
 		return
 	end
 	currentEscalationStage = stage
@@ -1132,6 +1141,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 			payload.total or #Config.Checkpoints
 		))
 	elseif kind == "sealBroken" then
+		tutorialRunToken += 1
 		if payload.id then
 			brokenSeals[payload.id] = true
 			applySealVisualState(payload.id, true)
