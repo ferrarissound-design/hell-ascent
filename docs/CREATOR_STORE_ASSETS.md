@@ -1,24 +1,44 @@
-# Creator Store assets
+# Toolbox asset workflow
 
-Layer One uses optional Creator Store MeshParts as a decoration pass.
+HELL ASCENT no longer loads third-party Creator Store assets at runtime.
 
-| Purpose | Asset | ID |
-| --- | --- | ---: |
-| Dead trees | Dead Tree by @SheriffTaco | 591112009 |
-| Skulls | skull by @angrybird0627 | 10834008239 |
-| Chains | Chain by @DevRedIte | 9772738118 |
-| Tombstones | Tombstone by @brightdani | 491290309 |
+Instead, insert the chosen models into Roblox Studio once and keep them as local templates inside the place.
 
-## Safety / fallback
+## Required Studio structure
 
-The game does not import third-party scripts.
+Create this folder manually:
 
-Only MeshPart content is requested. Every load is wrapped in `pcall`; if Roblox refuses an asset because of permissions, moderation, availability, or API behavior, the generated primitive scenery remains and gameplay continues.
+```text
+ServerStorage
+└─ HellAscentAssets
+   ├─ HellTree
+   ├─ HellSkull
+   ├─ HellChain
+   └─ HellTombstone
+```
 
-The asset IDs live in:
+The models can come from Creator Store / Toolbox.
 
-`src/shared/AssetConfig.lua`
+## Important
 
-The placement pass lives in:
+Rename the inserted models exactly:
 
-`src/server/HellAscent.server.lua`
+- `HellTree`
+- `HellSkull`
+- `HellChain`
+- `HellTombstone`
+
+The server script will:
+
+- find the templates
+- clone them
+- remove scripts, prompts, click detectors, and touch transmitters from clones
+- anchor all parts
+- resize them
+- place them around Layer One automatically
+
+If one template is missing, only that decoration type is skipped. The generated game world remains playable.
+
+## Why this workflow
+
+This avoids runtime third-party asset permission issues and makes the visual assets part of the place itself rather than a live external dependency.
