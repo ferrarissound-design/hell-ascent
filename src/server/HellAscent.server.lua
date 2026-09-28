@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local ServerStorage = game:GetService("ServerStorage")
 local Lighting = game:GetService("Lighting")
+local PathfindingService = game:GetService("PathfindingService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("GameConfig"))
@@ -31,6 +32,9 @@ end
 
 local checkpoints = {}
 local runStates = {}
+local wardenModel = nil
+local wardenHome = Config.Warden.SpawnPosition
+local wardenAttackTimes = {}
 
 local function serverNow()
 	return workspace:GetServerTimeNow()
@@ -83,6 +87,14 @@ local function breakSoulSeal(player, sealInfo)
 		count = state.sealCount,
 		total = #Config.Seals,
 	})
+
+	if state.sealCount == 1 then
+		event:FireClient(player, "wardenAwakened")
+	elseif state.sealCount == 2 then
+		event:FireClient(player, "wardenHunting")
+	elseif state.sealCount >= #Config.Seals then
+		event:FireClient(player, "wardenUnbound")
+	end
 
 	if state.sealCount >= #Config.Seals then
 		player:SetAttribute("GateOpen", true)
@@ -307,6 +319,273 @@ local function makeSoulSeal(info)
 	end)
 
 	pedestal.CanCollide = true
+end
+
+local function weldToRoot(root, part)
+	local weld = Instance.new("WeldConstraint")
+	weld.Part0 = root
+	weld.Part1 = part
+	weld.Parent = part
+end
+
+local function makeWardenBodyPart(model, root, name, size, offset, color, material, transparency, shape)
+	local part = Instance.new("Part")
+	part.Name = name
+	part.Size = size
+	part.CFrame = root.CFrame * offset
+	part.Color = color or Color3.fromRGB(20, 18, 20)
+	part.Material = material or Enum.Material.Slate
+	part.Transparency = transparency or 0
+	part.Anchored = false
+	part.CanCollide = false
+	part.CanTouch = false
+	part.Massless = true
+	part.TopSurface = Enum.SurfaceType.Smooth
+	part.BottomSurface = Enum.SurfaceType.Smooth
+	if shape then
+		part.Shape = shape
+	end
+	part.Parent = model
+	weldToRoot(root, part)
+	return part
+end
+
+local function createWarden()
+	if wardenModel and wardenModel.Parent then
+		wardenModel:Destroy()
+	end
+
+	local model = Instance.new("Model")
+	model.Name = "TheWarden"
+	model.Parent = world
+
+	local root = Instance.new("Part")
+	root.Name = "HumanoidRootPart"
+	root.Size = Vector3.new(3.2, 5.6, 2.6)
+	root.CFrame = CFrame.new(Config.Warden.SpawnPosition)
+	root.Transparency = 1
+	root.Anchored = false
+	root.CanCollide = true
+	root.CanTouch = false
+	root.Massless = false
+	root.Parent = model
+
+	local humanoid = Instance.new("Humanoid")
+	humanoid.Name = "Humanoid"
+	humanoid.DisplayName = "THE WARDEN"
+	humanoid.MaxHealth = 100000
+	humanoid.Health = 100000
+	humanoid.RequiresNeck = false
+	humanoid.AutoRotate = true
+	humanoid.HipHeight = 3.1
+	humanoid.WalkSpeed = 0
+	humanoid.JumpPower = 0
+	humanoid.Parent = model
+
+	local black = Color3.fromRGB(18, 17, 19)
+	local charcoal = Color3.fromRGB(30, 27, 29)
+	local metal = Color3.fromRGB(48, 42, 43)
+	local ember = Color3.fromRGB(255, 49, 24)
+
+	-- Lean, oversized executioner silhouette.
+	makeWardenBodyPart(model, root, "Torso", Vector3.new(4.4, 5.8, 2.3), CFrame.new(0, 3.2, 0), charcoal, Enum.Material.Slate)
+	makeWardenBodyPart(model, root, "ChestPlate", Vector3.new(3.5, 3.0, 0.55), CFrame.new(0, 3.8, -1.25), black, Enum.Material.Metal)
+	makeWardenBodyPart(model, root, "Head", Vector3.new(2.7, 3.5, 2.5), CFrame.new(0, 7.8, 0), black, Enum.Material.Basalt)
+	makeWardenBodyPart(model, root, "HoodCrown", Vector3.new(1.3, 1.8, 1.3), CFrame.new(0, 10.0, 0) * CFrame.Angles(0, 0, math.rad(45)), black, Enum.Material.Basalt)
+
+	makeWardenBodyPart(model, root, "LeftShoulder", Vector3.new(3.8, 1.25, 3.0), CFrame.new(-3.2, 5.4, 0) * CFrame.Angles(0, 0, math.rad(-12)), black, Enum.Material.Basalt)
+	makeWardenBodyPart(model, root, "RightShoulder", Vector3.new(3.8, 1.25, 3.0), CFrame.new(3.2, 5.4, 0) * CFrame.Angles(0, 0, math.rad(12)), black, Enum.Material.Basalt)
+
+	makeWardenBodyPart(model, root, "LeftArm", Vector3.new(1.35, 7.2, 1.45), CFrame.new(-2.8, 0.9, 0) * CFrame.Angles(0, 0, math.rad(-5)), charcoal, Enum.Material.Slate)
+	makeWardenBodyPart(model, root, "RightArm", Vector3.new(1.35, 7.2, 1.45), CFrame.new(2.8, 0.9, 0) * CFrame.Angles(0, 0, math.rad(5)), charcoal, Enum.Material.Slate)
+	makeWardenBodyPart(model, root, "LeftHand", Vector3.new(1.5, 2.5, 1.3), CFrame.new(-3.0, -3.8, -0.1) * CFrame.Angles(math.rad(-8), 0, math.rad(-8)), black, Enum.Material.Basalt)
+	makeWardenBodyPart(model, root, "RightHand", Vector3.new(1.5, 2.5, 1.3), CFrame.new(3.0, -3.8, -0.1) * CFrame.Angles(math.rad(-8), 0, math.rad(8)), black, Enum.Material.Basalt)
+
+	makeWardenBodyPart(model, root, "LeftLeg", Vector3.new(1.65, 6.6, 1.8), CFrame.new(-1.2, -3.3, 0) * CFrame.Angles(0, 0, math.rad(2)), charcoal, Enum.Material.Slate)
+	makeWardenBodyPart(model, root, "RightLeg", Vector3.new(1.65, 6.6, 1.8), CFrame.new(1.2, -3.3, 0) * CFrame.Angles(0, 0, math.rad(-2)), charcoal, Enum.Material.Slate)
+	makeWardenBodyPart(model, root, "LeftBladeFoot", Vector3.new(1.7, 3.1, 2.0), CFrame.new(-1.2, -7.4, -0.35) * CFrame.Angles(math.rad(-18), 0, math.rad(3)), black, Enum.Material.Basalt)
+	makeWardenBodyPart(model, root, "RightBladeFoot", Vector3.new(1.7, 3.1, 2.0), CFrame.new(1.2, -7.4, -0.35) * CFrame.Angles(math.rad(-18), 0, math.rad(-3)), black, Enum.Material.Basalt)
+
+	for index = 1, 4 do
+		local x = (index <= 2) and -1.35 or 1.35
+		local y = 2.1 - ((index - 1) % 2) * 2.2
+		makeWardenBodyPart(
+			model,
+			root,
+			"CloakStrip_" .. index,
+			Vector3.new(1.15, 6.4 + index * 0.45, 0.45),
+			CFrame.new(x, y - 2.5, 1.15) * CFrame.Angles(math.rad(4), 0, math.rad((index % 2 == 0) and 5 or -5)),
+			black,
+			Enum.Material.Fabric,
+			0.08
+		)
+	end
+
+	local slit = makeWardenBodyPart(
+		model,
+		root,
+		"FaceSlit",
+		Vector3.new(0.28, 2.65, 0.22),
+		CFrame.new(0, 7.85, -1.36),
+		ember,
+		Enum.Material.Neon
+	)
+
+	local eyeLight = Instance.new("PointLight")
+	eyeLight.Color = ember
+	eyeLight.Brightness = 2.6
+	eyeLight.Range = 18
+	eyeLight.Shadows = true
+	eyeLight.Parent = slit
+
+	for chainSide = -1, 1, 2 do
+		for index = 1, 5 do
+			makeWardenBodyPart(
+				model,
+				root,
+				("Chain_%d_%d"):format(chainSide, index),
+				Vector3.new(0.38, 0.38, 0.38),
+				CFrame.new(chainSide * (2.4 + index * 0.12), 5.0 - index * 0.85, 1.3),
+				metal,
+				Enum.Material.Metal,
+				0,
+				Enum.PartType.Ball
+			)
+		end
+	end
+
+	model.PrimaryPart = root
+	root:SetNetworkOwner(nil)
+	wardenModel = model
+	print("[HELL ASCENT] THE WARDEN spawned")
+	return model
+end
+
+local function getWardenTarget()
+	if not wardenModel or not wardenModel.PrimaryPart then
+		return nil, 0
+	end
+
+	local origin = wardenModel.PrimaryPart.Position
+	local bestPlayer = nil
+	local bestStage = 0
+	local bestDistance = math.huge
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		local state = runStates[player.UserId]
+		local character = player.Character
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+		if state
+			and not state.expired
+			and not state.escaped
+			and state.sealCount > 0
+			and root
+			and humanoid
+			and humanoid.Health > 0
+		then
+			local stage = math.clamp(state.sealCount, 1, 3)
+			local stageConfig = Config.Warden.Stages[stage]
+			local distance = (root.Position - origin).Magnitude
+			if distance <= stageConfig.DetectionRange then
+				if stage > bestStage or (stage == bestStage and distance < bestDistance) then
+					bestPlayer = player
+					bestStage = stage
+					bestDistance = distance
+				end
+			end
+		end
+	end
+
+	return bestPlayer, bestStage
+end
+
+local function moveWardenToward(targetPosition, stage)
+	if not wardenModel then
+		return
+	end
+
+	local root = wardenModel.PrimaryPart
+	local humanoid = wardenModel:FindFirstChildOfClass("Humanoid")
+	if not root or not humanoid then
+		return
+	end
+
+	local stageConfig = Config.Warden.Stages[stage] or Config.Warden.Stages[0]
+	humanoid.WalkSpeed = stageConfig.WalkSpeed
+
+	local path = PathfindingService:CreatePath({
+		AgentRadius = 2.3,
+		AgentHeight = 12,
+		AgentCanJump = false,
+		WaypointSpacing = 5,
+	})
+
+	local success = pcall(function()
+		path:ComputeAsync(root.Position, targetPosition)
+	end)
+
+	if success and path.Status == Enum.PathStatus.Success then
+		local waypoints = path:GetWaypoints()
+		local waypoint = waypoints[math.min(2, #waypoints)]
+		if waypoint then
+			humanoid:MoveTo(waypoint.Position)
+			return
+		end
+	end
+
+	humanoid:MoveTo(targetPosition)
+end
+
+local function runWardenAI()
+	task.spawn(function()
+		while true do
+			task.wait(Config.Warden.RepathSeconds)
+
+			if not wardenModel or not wardenModel.Parent then
+				continue
+			end
+
+			local root = wardenModel.PrimaryPart
+			local humanoid = wardenModel:FindFirstChildOfClass("Humanoid")
+			if not root or not humanoid then
+				continue
+			end
+
+			local targetPlayer, stage = getWardenTarget()
+			if not targetPlayer then
+				humanoid.WalkSpeed = 7
+				if (root.Position - wardenHome).Magnitude > 8 then
+					moveWardenToward(wardenHome, 1)
+				else
+					humanoid:MoveTo(root.Position)
+					humanoid.WalkSpeed = 0
+				end
+				continue
+			end
+
+			local character = targetPlayer.Character
+			local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
+			local targetHumanoid = character and character:FindFirstChildOfClass("Humanoid")
+			if not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then
+				continue
+			end
+
+			moveWardenToward(targetRoot.Position, stage)
+
+			local distance = (targetRoot.Position - root.Position).Magnitude
+			if distance <= Config.Warden.AttackRange then
+				local now = serverNow()
+				local lastAttack = wardenAttackTimes[targetPlayer.UserId] or 0
+				if now - lastAttack >= Config.Warden.AttackCooldown then
+					wardenAttackTimes[targetPlayer.UserId] = now
+					targetHumanoid:TakeDamage(Config.Warden.Damage)
+					event:FireClient(targetPlayer, "wardenStrike")
+				end
+			end
+		end
+	end)
 end
 
 local TEMPLATE_FOLDER_NAME = "HellAscentAssets"
@@ -867,6 +1146,7 @@ local function buildWorld()
 		guideLight.Parent = guide
 	end
 
+	createWarden()
 	print("[HELL ASCENT] Layer One world generated successfully")
 	task.spawn(decorateWithLocalTemplates)
 end
@@ -919,12 +1199,14 @@ local function setupPlayer(player)
 end
 
 buildWorld()
+runWardenAI()
 
 Players.PlayerAdded:Connect(setupPlayer)
 
 Players.PlayerRemoving:Connect(function(player)
 	checkpoints[player.UserId] = nil
 	runStates[player.UserId] = nil
+	wardenAttackTimes[player.UserId] = nil
 end)
 
 for _, player in ipairs(Players:GetPlayers()) do
