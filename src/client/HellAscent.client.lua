@@ -69,6 +69,7 @@ toastCorner.Parent = toast
 local intro = Instance.new("Frame")
 intro.Size = UDim2.fromScale(1, 1)
 intro.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+intro.BackgroundTransparency = 1
 intro.BorderSizePixel = 0
 intro.ZIndex = 20
 intro.Parent = gui
@@ -164,12 +165,11 @@ event.OnClientEvent:Connect(function(kind, payload)
 	end
 end)
 
-task.delay(1.3, function()
-	TweenService:Create(intro, TweenInfo.new(1.8), {BackgroundTransparency = 1}):Play()
-	TweenService:Create(introTitle, TweenInfo.new(1.3), {TextTransparency = 1}):Play()
-	TweenService:Create(introSub, TweenInfo.new(1.3), {TextTransparency = 1}):Play()
+task.delay(1.8, function()
+	TweenService:Create(introTitle, TweenInfo.new(0.8), {TextTransparency = 1}):Play()
+	TweenService:Create(introSub, TweenInfo.new(0.8), {TextTransparency = 1}):Play()
 
-	task.delay(1.9, function()
+	task.delay(0.9, function()
 		intro:Destroy()
 	end)
 end)
