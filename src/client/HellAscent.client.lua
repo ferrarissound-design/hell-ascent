@@ -841,10 +841,12 @@ local function refreshRunStatus()
 	end
 
 	local gateOpen = player:GetAttribute("GateOpen") == true
-	finalRunActive = gateOpen
-	finalRunPanel.Visible = gateOpen and not escapeShown
+	local runFinished = player:GetAttribute("RunExpired") == true
+		or player:GetAttribute("LayerOneEscaped") == true
+	finalRunActive = gateOpen and not runFinished
+	finalRunPanel.Visible = finalRunActive and not escapeShown
 	if gateMarker then
-		gateMarker.billboard.Enabled = gateOpen
+		gateMarker.billboard.Enabled = gateOpen and not runFinished
 	end
 	applyGateVisualState(gateOpen)
 end
@@ -1176,6 +1178,9 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "expired" then
 		setSprintRequested(false)
 		setSprintControlVisible(false)
+		finalRunActive = false
+		finalRunPanel.Visible = false
+		staminaPanel.Visible = false
 		showToast("魂が尽きた。最初から再挑戦")
 	elseif kind == "runStart" then
 		setSprintRequested(false)
@@ -1209,7 +1214,9 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "escaped" then
 		setSprintRequested(false)
 		setSprintControlVisible(false)
+		finalRunActive = false
 		finalRunPanel.Visible = false
+		staminaPanel.Visible = false
 		showEscape(payload)
 	end
 end)
@@ -1227,6 +1234,10 @@ end
 
 rebuildBrokenSealsFromAttributes()
 refreshRunStatus()
+setSprintControlVisible(
+	player:GetAttribute("RunExpired") ~= true
+		and player:GetAttribute("LayerOneEscaped") ~= true
+)
 
 if player:GetAttribute("RunDeadline") then
 	task.defer(startFirstRunTutorial)
@@ -1254,7 +1265,10 @@ RunService.RenderStepped:Connect(function()
 	local sprintActive = player:GetAttribute("SprintActive") == true
 	local staminaRatio = math.clamp(stamina / Config.Sprint.MaxStamina, 0, 1)
 	staminaFill.Size = UDim2.fromScale(staminaRatio, 1)
-	staminaPanel.Visible = sprintActive or stamina < Config.Sprint.MaxStamina
+	local runFinished = player:GetAttribute("RunExpired") == true
+		or player:GetAttribute("LayerOneEscaped") == true
+	staminaPanel.Visible = not runFinished
+		and (sprintActive or stamina < Config.Sprint.MaxStamina)
 	staminaText.Text = sprintActive and "SPRINT" or "STAMINA"
 
 	local deadline = player:GetAttribute("RunDeadline")
