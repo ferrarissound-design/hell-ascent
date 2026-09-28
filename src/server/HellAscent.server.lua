@@ -1779,10 +1779,15 @@ task.spawn(function()
 			if state and humanoid then
 				local alive = humanoid.Health > 0
 				local runActive = state.started and not state.expired and not state.escaped
+				local moving = humanoid.MoveDirection.Magnitude > 0.05
+				local enoughToSprint = state.sprintActive
+					and state.sprintStamina > 0
+					or state.sprintStamina >= Config.Sprint.MinimumStartStamina
 				local shouldSprint = runActive
 					and alive
+					and moving
 					and state.sprintRequested
-					and state.sprintStamina > 0
+					and enoughToSprint
 
 				if shouldSprint then
 					state.sprintActive = true
