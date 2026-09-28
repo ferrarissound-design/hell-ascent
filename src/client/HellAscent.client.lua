@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
+local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -24,12 +25,40 @@ local gateMarker = nil
 local toastSerial = 0
 local activeToastTween = nil
 local activeToastFade = nil
+local hellWorld = nil
+local currentEscalationStage = -1
+local stageBannerSerial = 0
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
 gui.IgnoreGuiInset = false
 gui.ResetOnSpawn = false
 gui.Parent = playerGui
+
+local oldEscalationColor = Lighting:FindFirstChild("HellEscalationColor")
+if oldEscalationColor then
+	oldEscalationColor:Destroy()
+end
+
+local oldEscalationBloom = Lighting:FindFirstChild("HellEscalationBloom")
+if oldEscalationBloom then
+	oldEscalationBloom:Destroy()
+end
+
+local escalationColor = Instance.new("ColorCorrectionEffect")
+escalationColor.Name = "HellEscalationColor"
+escalationColor.Brightness = 0
+escalationColor.Contrast = 0
+escalationColor.Saturation = 0
+escalationColor.TintColor = Color3.fromRGB(255, 255, 255)
+escalationColor.Parent = Lighting
+
+local escalationBloom = Instance.new("BloomEffect")
+escalationBloom.Name = "HellEscalationBloom"
+escalationBloom.Intensity = 0.05
+escalationBloom.Size = 28
+escalationBloom.Threshold = 1.4
+escalationBloom.Parent = Lighting
 
 local header = Instance.new("Frame")
 header.AnchorPoint = Vector2.new(0.5, 0)
@@ -117,6 +146,29 @@ damageFlash.BorderSizePixel = 0
 damageFlash.ZIndex = 14
 damageFlash.Parent = gui
 
+local hellPressure = Instance.new("Frame")
+hellPressure.Size = UDim2.fromScale(1, 1)
+hellPressure.BackgroundColor3 = Color3.fromRGB(120, 16, 8)
+hellPressure.BackgroundTransparency = 1
+hellPressure.BorderSizePixel = 0
+hellPressure.ZIndex = 5
+hellPressure.Parent = gui
+
+local stageBanner = Instance.new("TextLabel")
+stageBanner.AnchorPoint = Vector2.new(0.5, 0.5)
+stageBanner.Position = UDim2.new(0.5, 0, 0.39, 0)
+stageBanner.Size = UDim2.new(0.82, 0, 0, 74)
+stageBanner.BackgroundTransparency = 1
+stageBanner.Text = ""
+stageBanner.TextColor3 = Color3.fromRGB(240, 206, 190)
+stageBanner.TextStrokeColor3 = Color3.fromRGB(40, 8, 6)
+stageBanner.TextStrokeTransparency = 1
+stageBanner.TextTransparency = 1
+stageBanner.Font = Enum.Font.GothamBlack
+stageBanner.TextScaled = true
+stageBanner.ZIndex = 16
+stageBanner.Parent = gui
+
 local intro = Instance.new("Frame")
 intro.Size = UDim2.fromScale(1, 1)
 intro.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
@@ -197,6 +249,158 @@ local function flashDamage()
 		TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 		{BackgroundTransparency = 1}
 	):Play()
+end
+
+local function showEscalationBanner(text, isFinal)
+	stageBannerSerial += 1
+	local serial = stageBannerSerial
+
+	stageBanner.Text = text
+	stageBanner.TextColor3 = isFinal
+		and Color3.fromRGB(255, 104, 62)
+		or Color3.fromRGB(240, 206, 190)
+	stageBanner.TextTransparency = 1
+	stageBanner.TextStrokeTransparency = 1
+
+	TweenService:Create(
+		stageBanner,
+		TweenInfo.new(0.2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{TextTransparency = 0, TextStrokeTransparency = 0.5}
+	):Play()
+
+	task.delay(isFinal and 1.3 or 1.0, function()
+		if serial ~= stageBannerSerial then
+			return
+		end
+
+		TweenService:Create(
+			stageBanner,
+			TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{TextTransparency = 1, TextStrokeTransparency = 1}
+		):Play()
+	end)
+end
+
+local escalationProfiles = {
+	[0] = {
+		brightness = 0,
+		contrast = 0,
+		saturation = 0,
+		tint = Color3.fromRGB(255, 255, 255),
+		bloom = 0.05,
+		fogStart = 90,
+		fogEnd = 620,
+		pressure = 1,
+		emberBrightness = 2.6,
+		emberRange = 38,
+	},
+	[1] = {
+		brightness = -0.01,
+		contrast = 0.05,
+		saturation = -0.03,
+		tint = Color3.fromRGB(255, 226, 216),
+		bloom = 0.12,
+		fogStart = 82,
+		fogEnd = 570,
+		pressure = 0.985,
+		emberBrightness = 2.9,
+		emberRange = 42,
+	},
+	[2] = {
+		brightness = -0.015,
+		contrast = 0.10,
+		saturation = -0.06,
+		tint = Color3.fromRGB(255, 196, 178),
+		bloom = 0.22,
+		fogStart = 72,
+		fogEnd = 510,
+		pressure = 0.972,
+		emberBrightness = 3.4,
+		emberRange = 47,
+	},
+	[3] = {
+		brightness = 0.005,
+		contrast = 0.16,
+		saturation = -0.08,
+		tint = Color3.fromRGB(255, 166, 145),
+		bloom = 0.38,
+		fogStart = 60,
+		fogEnd = 445,
+		pressure = 0.955,
+		emberBrightness = 4.3,
+		emberRange = 56,
+	},
+}
+
+local function applyEscalationStage(stage, announce)
+	stage = math.clamp(stage or 0, 0, 3)
+	local previousStage = currentEscalationStage
+	if stage == currentEscalationStage then
+		return
+	end
+	currentEscalationStage = stage
+
+	local profile = escalationProfiles[stage]
+
+	TweenService:Create(
+		escalationColor,
+		TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{
+			Brightness = profile.brightness,
+			Contrast = profile.contrast,
+			Saturation = profile.saturation,
+			TintColor = profile.tint,
+		}
+	):Play()
+
+	TweenService:Create(
+		escalationBloom,
+		TweenInfo.new(1.0, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{Intensity = profile.bloom}
+	):Play()
+
+	TweenService:Create(
+		Lighting,
+		TweenInfo.new(1.1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{
+			FogStart = profile.fogStart,
+			FogEnd = profile.fogEnd,
+		}
+	):Play()
+
+	TweenService:Create(
+		hellPressure,
+		TweenInfo.new(0.8, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{BackgroundTransparency = profile.pressure}
+	):Play()
+
+	if hellWorld then
+		for _, descendant in ipairs(hellWorld:GetDescendants()) do
+			if descendant:IsA("PointLight")
+				and descendant.Parent
+				and descendant.Parent.Name == "RouteEmber"
+			then
+				TweenService:Create(
+					descendant,
+					TweenInfo.new(0.8),
+					{
+						Brightness = profile.emberBrightness,
+						Range = profile.emberRange,
+					}
+				):Play()
+			end
+		end
+	end
+
+	if announce and stage > previousStage then
+		if stage == 1 then
+			showEscalationBanner("HELL STIRS", false)
+		elseif stage == 2 then
+			showEscalationBanner("THE VEIL THINS", false)
+		elseif stage == 3 then
+			showEscalationBanner("RUN", true)
+		end
+	end
 end
 
 local function showEscape(payload)
@@ -293,7 +497,7 @@ guideFolder = Instance.new("Folder")
 guideFolder.Name = "HellAscentLocalGuides"
 guideFolder.Parent = workspace
 
-local hellWorld = workspace:WaitForChild("HellAscentWorld")
+hellWorld = workspace:WaitForChild("HellAscentWorld")
 local gateHighlight = nil
 
 local function applyGateVisualState(isOpen)
@@ -446,6 +650,7 @@ local function refreshRunStatus()
 	local broken = player:GetAttribute("SealsBroken") or 0
 	local total = player:GetAttribute("TotalSeals") or #Config.Seals
 	sealsLabel.Text = string.format("魂の封印  %d / %d", broken, total)
+	applyEscalationStage(broken, false)
 
 	if player:GetAttribute("GateOpen") then
 		sealsLabel.TextColor3 = Color3.fromRGB(255, 111, 60)
@@ -596,6 +801,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 			brokenSeals[payload.id] = true
 			applySealVisualState(payload.id, true)
 		end
+		applyEscalationStage(payload.count or 0, true)
 		showToast(string.format("封印を破壊  %d / %d", payload.count, payload.total))
 		refreshRunStatus()
 	elseif kind == "sealAlreadyBroken" then
@@ -622,6 +828,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 		brokenSeals = {}
 		escapeShown = false
 		respawnSafeUntil = 0
+		currentEscalationStage = -1
+		applyEscalationStage(0, false)
 		timerLabel.Text = "準備中"
 		timerLabel.TextColor3 = Color3.fromRGB(196, 208, 220)
 		if endingFrame then
