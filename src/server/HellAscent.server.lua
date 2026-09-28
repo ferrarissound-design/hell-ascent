@@ -610,6 +610,20 @@ local function getWardenTarget()
 	return bestPlayer, bestStage
 end
 
+local function faceWardenToward(targetPosition)
+	if not wardenModel or not wardenModel.PrimaryPart then
+		return
+	end
+
+	local root = wardenModel.PrimaryPart
+	local flatTarget = Vector3.new(targetPosition.X, root.Position.Y, targetPosition.Z)
+	if (flatTarget - root.Position).Magnitude < 0.5 then
+		return
+	end
+
+	root.CFrame = CFrame.lookAt(root.Position, flatTarget)
+end
+
 local function moveWardenToward(targetPosition, stage)
 	if not wardenModel then
 		return
@@ -684,9 +698,16 @@ local function runWardenAI()
 				continue
 			end
 
-			moveWardenToward(targetRoot.Position, stage)
-
 			local distance = (targetRoot.Position - root.Position).Magnitude
+
+			if stage == 1 and distance > Config.Warden.StageOneWatchDistance then
+				humanoid.WalkSpeed = 0
+				humanoid:MoveTo(root.Position)
+				faceWardenToward(targetRoot.Position)
+			else
+				moveWardenToward(targetRoot.Position, stage)
+			end
+
 			if distance <= Config.Warden.AttackRange then
 				local now = serverNow()
 				local lastAttack = wardenAttackTimes[targetPlayer.UserId] or 0
