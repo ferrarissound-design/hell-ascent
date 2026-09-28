@@ -361,7 +361,7 @@ local function createWarden()
 
 	local root = Instance.new("Part")
 	root.Name = "HumanoidRootPart"
-	root.Size = Vector3.new(3.2, 5.6, 2.6)
+	root.Size = Vector3.new(2.5, 3.4, 2.0)
 	root.CFrame = CFrame.new(Config.Warden.SpawnPosition)
 	root.Transparency = 1
 	root.Anchored = false
@@ -377,9 +377,9 @@ local function createWarden()
 	humanoid.Health = 100000
 	humanoid.RequiresNeck = false
 	humanoid.AutoRotate = true
-	humanoid.HipHeight = 3.1
+	humanoid.HipHeight = 2.8
 	humanoid.WalkSpeed = 0
-	humanoid.JumpPower = 0
+	humanoid.JumpPower = 42
 	humanoid.Parent = model
 
 	local black = Color3.fromRGB(18, 17, 19)
@@ -516,9 +516,9 @@ local function moveWardenToward(targetPosition, stage)
 	humanoid.WalkSpeed = stageConfig.WalkSpeed
 
 	local path = PathfindingService:CreatePath({
-		AgentRadius = 2.3,
-		AgentHeight = 12,
-		AgentCanJump = false,
+		AgentRadius = 2.0,
+		AgentHeight = 10,
+		AgentCanJump = true,
 		WaypointSpacing = 5,
 	})
 
@@ -530,6 +530,9 @@ local function moveWardenToward(targetPosition, stage)
 		local waypoints = path:GetWaypoints()
 		local waypoint = waypoints[math.min(2, #waypoints)]
 		if waypoint then
+			if waypoint.Action == Enum.PathWaypointAction.Jump then
+				humanoid.Jump = true
+			end
 			humanoid:MoveTo(waypoint.Position)
 			return
 		end
@@ -926,8 +929,8 @@ local function buildWorld()
 		Enum.Material.Neon
 	)
 	lava.Touched:Connect(function(hit)
-		local _, humanoid = playerFromHit(hit)
-		if humanoid then
+		local player, humanoid = playerFromHit(hit)
+		if player and humanoid then
 			humanoid.Health = 0
 		end
 	end)
