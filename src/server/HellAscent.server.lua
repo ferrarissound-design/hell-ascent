@@ -1095,12 +1095,23 @@ local function runWardenAI()
 			end
 
 			if distance <= Config.Warden.AttackRange then
-				local now = serverNow()
-				local lastAttack = wardenAttackTimes[targetPlayer.UserId] or 0
-				if now - lastAttack >= Config.Warden.AttackCooldown then
-					wardenAttackTimes[targetPlayer.UserId] = now
-					targetHumanoid:TakeDamage(Config.Warden.Damage)
-					event:FireClient(targetPlayer, "wardenStrike")
+				local liveState = runStates[targetPlayer.UserId]
+				local targetStillValid = liveState
+					and not liveState.expired
+					and not liveState.escaped
+					and serverNow() >= (liveState.wardenGraceUntil or 0)
+					and targetPlayer.Character == character
+					and targetHumanoid.Parent == character
+					and targetHumanoid.Health > 0
+
+				if targetStillValid then
+					local now = serverNow()
+					local lastAttack = wardenAttackTimes[targetPlayer.UserId] or 0
+					if now - lastAttack >= Config.Warden.AttackCooldown then
+						wardenAttackTimes[targetPlayer.UserId] = now
+						targetHumanoid:TakeDamage(Config.Warden.Damage)
+						event:FireClient(targetPlayer, "wardenStrike")
+					end
 				end
 			end
 		end
