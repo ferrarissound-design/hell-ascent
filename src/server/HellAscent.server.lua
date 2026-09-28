@@ -506,6 +506,7 @@ local function makeCheckpoint(info, checkpointIndex)
 	)
 	marker.Transparency = 0.38
 	marker.CanCollide = false
+	marker.CanQuery = false
 
 	local beacon = makePart(
 		"SoulAnchorBeacon_" .. info.name:gsub("%s+", "_"),
@@ -517,6 +518,7 @@ local function makeCheckpoint(info, checkpointIndex)
 	beacon.Transparency = 0.28
 	beacon.CanCollide = false
 	beacon.CanTouch = false
+	beacon.CanQuery = false
 
 	local light = Instance.new("PointLight")
 	light.Color = Color3.fromRGB(255, 91, 52)
@@ -1741,6 +1743,8 @@ local function buildWorld()
 	)
 	signAnchor.Transparency = 1
 	signAnchor.CanCollide = false
+	signAnchor.CanTouch = false
+	signAnchor.CanQuery = false
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Size = UDim2.fromOffset(300, 64)
