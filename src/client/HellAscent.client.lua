@@ -965,6 +965,19 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "wardenStrike" then
 		flashDamage()
 		showToast("WARDENの攻撃を受けた")
+	elseif kind == "ashRiftUsed" then
+		flashDamage()
+		showToast(string.format("ASH RIFT使用  /  HP -%d  /  前方へ転移", payload.cost or Config.AshRift.HealthCost))
+	elseif kind == "ashRiftUnavailable" then
+		if payload.reason == "used" then
+			showToast("ASH RIFTは1周1回だけ使える")
+		elseif payload.reason == "seals" then
+			showToast(string.format("封印を%d個以上壊すと使える", payload.required or Config.AshRift.MinimumSeals))
+		elseif payload.reason == "health" then
+			showToast(string.format("HPが足りない  /  必要HP > %d", payload.cost or Config.AshRift.HealthCost))
+		else
+			showToast("ASH RIFTは今使えない")
+		end
 	elseif kind == "gateOpen" then
 		showToast("BLACK GATEが開いた。門へ向かえ")
 		refreshRunStatus()
