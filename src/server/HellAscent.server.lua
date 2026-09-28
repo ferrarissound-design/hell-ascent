@@ -48,6 +48,7 @@ local function beginRun(player)
 		deaths = 0,
 		escaped = false,
 		expired = false,
+		wardenGraceUntil = serverNow() + Config.RespawnGraceSeconds,
 	}
 
 	runStates[player.UserId] = state
@@ -83,6 +84,7 @@ local function breakSoulSeal(player, sealInfo)
 	player:SetAttribute("SealsBroken", state.sealCount)
 
 	event:FireClient(player, "sealBroken", {
+		id = sealInfo.id,
 		name = sealInfo.name,
 		count = state.sealCount,
 		total = #Config.Seals,
@@ -306,10 +308,10 @@ local function makeSoulSeal(info)
 
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.Name = "BreakSealPrompt"
-	prompt.ActionText = "BREAK SEAL"
+	prompt.ActionText = "封印を壊す / BREAK"
 	prompt.ObjectText = info.name
-	prompt.HoldDuration = 1.1
-	prompt.MaxActivationDistance = 12
+	prompt.HoldDuration = 0.85
+	prompt.MaxActivationDistance = 14
 	prompt.RequiresLineOfSight = false
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.Parent = core
@@ -481,6 +483,7 @@ local function getWardenTarget()
 			and not state.expired
 			and not state.escaped
 			and state.sealCount > 0
+			and serverNow() >= (state.wardenGraceUntil or 0)
 			and root
 			and humanoid
 			and humanoid.Health > 0
@@ -1068,7 +1071,7 @@ local function buildWorld()
 		light.Parent = brazier
 	end
 
-	veil.CanCollide = true
+	veil.CanCollide = false
 
 	local exitCooldown = {}
 	veil.Touched:Connect(function(hit)
@@ -1089,6 +1092,19 @@ local function buildWorld()
 				count = state.sealCount,
 				total = #Config.Seals,
 			})
+
+			local character = player.Character
+			local root = character and character:FindFirstChild("HumanoidRootPart")
+			if character and root then
+				root.AssemblyLinearVelocity = Vector3.zero
+				character:PivotTo(
+					CFrame.lookAt(
+						Config.GateRepelPosition,
+						Vector3.new(0, Config.GateRepelPosition.Y, Config.ExitPosition.Z)
+					)
+				)
+			end
+
 			task.delay(1.2, function()
 				exitCooldown[player] = nil
 			end)
@@ -1169,6 +1185,11 @@ local function bindCharacter(player, character)
 	local humanoid = character:WaitForChild("Humanoid", 8)
 	if not humanoid then
 		return
+	end
+
+	local state = runStates[player.UserId]
+	if state then
+		state.wardenGraceUntil = serverNow() + Config.RespawnGraceSeconds
 	end
 
 	humanoid.Died:Connect(function()
