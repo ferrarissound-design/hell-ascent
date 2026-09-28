@@ -35,6 +35,7 @@ local runStates = {}
 local wardenModel = nil
 local wardenHome = Config.Warden.SpawnPosition
 local wardenAttackTimes = {}
+local wardenObservations = {}
 local setupPlayers = {}
 
 local function serverNow()
@@ -88,6 +89,7 @@ local function beginRun(player)
 	runStates[player.UserId] = state
 	checkpoints[player.UserId] = CFrame.new(Config.SpawnPosition)
 	wardenAttackTimes[player.UserId] = nil
+	wardenObservations[player.UserId] = nil
 
 	player:SetAttribute("RunDeadline", nil)
 	player:SetAttribute("SealsBroken", 0)
@@ -610,6 +612,15 @@ local function getWardenTarget()
 	return bestPlayer, bestStage
 end
 
+local function isWardenObserved(player)
+	local report = wardenObservations[player.UserId]
+	if not report or not report.observed then
+		return false
+	end
+
+	return serverNow() - report.updated <= (Config.Warden.ObservationFreshnessSeconds or 0.75)
+end
+
 local function faceWardenToward(targetPosition)
 	if not wardenModel or not wardenModel.PrimaryPart then
 		return
@@ -624,7 +635,7 @@ local function faceWardenToward(targetPosition)
 	root.CFrame = CFrame.lookAt(root.Position, flatTarget)
 end
 
-local function moveWardenToward(targetPosition, stage)
+local function moveWardenToward(targetPosition, stage, speedOverride)
 	if not wardenModel then
 		return
 	end
@@ -636,7 +647,7 @@ local function moveWardenToward(targetPosition, stage)
 	end
 
 	local stageConfig = Config.Warden.Stages[stage] or Config.Warden.Stages[0]
-	humanoid.WalkSpeed = stageConfig.WalkSpeed
+	humanoid.WalkSpeed = speedOverride or stageConfig.WalkSpeed
 
 	local path = PathfindingService:CreatePath({
 		AgentRadius = 2.0,
@@ -700,12 +711,19 @@ local function runWardenAI()
 
 			local distance = (targetRoot.Position - root.Position).Magnitude
 
-			if stage == 1 and distance > Config.Warden.StageOneWatchDistance then
+			if stage == 1
+				and isWardenObserved(targetPlayer)
+				and distance > (Config.Warden.AttackRange + 2)
+			then
 				humanoid.WalkSpeed = 0
 				humanoid:MoveTo(root.Position)
 				faceWardenToward(targetRoot.Position)
 			else
-				moveWardenToward(targetRoot.Position, stage)
+				local speedOverride = nil
+				if stage == 1 and distance > Config.Warden.StageOneWatchDistance then
+					speedOverride = Config.Warden.StageOneCreepSpeed
+				end
+				moveWardenToward(targetRoot.Position, stage, speedOverride)
 			end
 
 			if distance <= Config.Warden.AttackRange then
@@ -1368,7 +1386,21 @@ end
 buildWorld()
 runWardenAI()
 
-event.OnServerEvent:Connect(function(player, kind)
+event.OnServerEvent:Connect(function(player, kind, payload)
+	if kind == "wardenObserved" then
+		local state = runStates[player.UserId]
+		if not state or state.expired or state.escaped or state.sealCount ~= 1 then
+			wardenObservations[player.UserId] = nil
+			return
+		end
+
+		wardenObservations[player.UserId] = {
+			observed = payload == true,
+			updated = serverNow(),
+		}
+		return
+	end
+
 	if kind ~= "restartRun" then
 		return
 	end
@@ -1388,6 +1420,7 @@ Players.PlayerRemoving:Connect(function(player)
 	checkpoints[player.UserId] = nil
 	runStates[player.UserId] = nil
 	wardenAttackTimes[player.UserId] = nil
+	wardenObservations[player.UserId] = nil
 	setupPlayers[player] = nil
 end)
 
