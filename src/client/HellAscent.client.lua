@@ -325,6 +325,13 @@ ContextActionService:BindAction(
 ContextActionService:SetTitle("HellSprint", "走る")
 ContextActionService:SetPosition("HellSprint", UDim2.new(1, -172, 1, -138))
 
+local function setSprintControlVisible(visible)
+	local button = ContextActionService:GetButton("HellSprint")
+	if button then
+		button.Visible = visible == true
+	end
+end
+
 local function showToast(text)
 	toastSerial += 1
 	local serial = toastSerial
@@ -1124,9 +1131,12 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "deathPenalty" then
 		showToast(string.format("死亡: -%d秒  /  スタミナ回復  /  %d秒安全", payload.seconds, Config.RespawnGraceSeconds))
 	elseif kind == "expired" then
+		setSprintRequested(false)
+		setSprintControlVisible(false)
 		showToast("魂が尽きた。最初から再挑戦")
 	elseif kind == "runStart" then
 		setSprintRequested(false)
+		setSprintControlVisible(true)
 		brokenSeals = {}
 		escapeShown = false
 		finalRunActive = false
@@ -1151,6 +1161,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 		timerLabel.Text = "残り  " .. formatTime(payload.duration or Config.RunDurationSeconds)
 		timerLabel.TextColor3 = Color3.fromRGB(222, 174, 145)
 	elseif kind == "escaped" then
+		setSprintRequested(false)
+		setSprintControlVisible(false)
 		finalRunPanel.Visible = false
 		showEscape(payload)
 	end
