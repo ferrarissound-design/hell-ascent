@@ -30,6 +30,65 @@ if not event then
 end
 
 local checkpoints = {}
+local runStates = {}
+
+local function serverNow()
+	return workspace:GetServerTimeNow()
+end
+
+local function beginRun(player)
+	local state = {
+		deadline = serverNow() + Config.RunDurationSeconds,
+		seals = {},
+		sealCount = 0,
+		deaths = 0,
+		escaped = false,
+		expired = false,
+	}
+
+	runStates[player.UserId] = state
+	checkpoints[player.UserId] = CFrame.new(Config.SpawnPosition)
+
+	player:SetAttribute("RunDeadline", state.deadline)
+	player:SetAttribute("SealsBroken", 0)
+	player:SetAttribute("TotalSeals", #Config.Seals)
+	player:SetAttribute("GateOpen", false)
+	player:SetAttribute("RunExpired", false)
+	player:SetAttribute("LayerOneEscaped", false)
+	player:SetAttribute("DeathsThisRun", 0)
+
+	event:FireClient(player, "runStart", {
+		deadline = state.deadline,
+		duration = Config.RunDurationSeconds,
+	})
+end
+
+local function breakSoulSeal(player, sealInfo)
+	local state = runStates[player.UserId]
+	if not state or state.expired or state.escaped then
+		return
+	end
+
+	if state.seals[sealInfo.id] then
+		event:FireClient(player, "sealAlreadyBroken", sealInfo.name)
+		return
+	end
+
+	state.seals[sealInfo.id] = true
+	state.sealCount += 1
+	player:SetAttribute("SealsBroken", state.sealCount)
+
+	event:FireClient(player, "sealBroken", {
+		name = sealInfo.name,
+		count = state.sealCount,
+		total = #Config.Seals,
+	})
+
+	if state.sealCount >= #Config.Seals then
+		player:SetAttribute("GateOpen", true)
+		event:FireClient(player, "gateOpen")
+	end
+end
 
 local function setLighting()
 	-- Keep Layer One oppressive, but never so dark that the player loses the route.
@@ -186,6 +245,68 @@ local function makeCheckpoint(info)
 			cooldown[player] = nil
 		end)
 	end)
+end
+
+local function makeSoulSeal(info)
+	local model = Instance.new("Model")
+	model.Name = "SoulSeal_" .. info.id
+	model.Parent = world
+
+	local pedestal = makePart(
+		"Pedestal",
+		Vector3.new(9, 2.5, 9),
+		CFrame.new(info.position),
+		Color3.fromRGB(34, 28, 30),
+		Enum.Material.Basalt,
+		model
+	)
+
+	local core = makePart(
+		"SealCore",
+		Vector3.new(4.8, 4.8, 4.8),
+		CFrame.new(info.position + Vector3.new(0, 5, 0)),
+		Color3.fromRGB(170, 42, 24),
+		Enum.Material.Neon,
+		model
+	)
+	core.Shape = Enum.PartType.Ball
+	core.CanCollide = false
+	core.CanTouch = false
+
+	local ring = makePart(
+		"SealRing",
+		Vector3.new(1.2, 9, 9),
+		CFrame.new(info.position + Vector3.new(0, 5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(72, 57, 55),
+		Enum.Material.Metal,
+		model
+	)
+	ring.Shape = Enum.PartType.Cylinder
+	ring.CanCollide = false
+	ring.CanTouch = false
+
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 76, 35)
+	light.Brightness = 3.2
+	light.Range = 32
+	light.Shadows = true
+	light.Parent = core
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "BreakSealPrompt"
+	prompt.ActionText = "BREAK SEAL"
+	prompt.ObjectText = info.name
+	prompt.HoldDuration = 1.1
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.Parent = core
+
+	prompt.Triggered:Connect(function(player)
+		breakSoulSeal(player, info)
+	end)
+
+	pedestal.CanCollide = true
 end
 
 local TEMPLATE_FOLDER_NAME = "HellAscentAssets"
@@ -601,6 +722,10 @@ local function buildWorld()
 		makeCheckpoint(checkpoint)
 	end
 
+	for _, sealInfo in ipairs(Config.Seals) do
+		makeSoulSeal(sealInfo)
+	end
+
 	local gate = Instance.new("Model")
 	gate.Name = "BlackGate"
 	gate.Parent = world
@@ -661,6 +786,8 @@ local function buildWorld()
 		light.Parent = brazier
 	end
 
+	veil.CanCollide = true
+
 	local exitCooldown = {}
 	veil.Touched:Connect(function(hit)
 		local player = playerFromHit(hit)
@@ -668,7 +795,25 @@ local function buildWorld()
 			return
 		end
 
+		local state = runStates[player.UserId]
+		if not state or state.expired or state.escaped then
+			return
+		end
+
 		exitCooldown[player] = true
+
+		if state.sealCount < #Config.Seals then
+			event:FireClient(player, "gateLocked", {
+				count = state.sealCount,
+				total = #Config.Seals,
+			})
+			task.delay(1.2, function()
+				exitCooldown[player] = nil
+			end)
+			return
+		end
+
+		state.escaped = true
 		player:SetAttribute("LayerOneEscaped", true)
 		event:FireClient(player, "escaped", Config.LayerTitle)
 
@@ -735,32 +880,78 @@ local function moveCharacterToCheckpoint(player, character)
 	end
 end
 
-buildWorld()
+local function bindCharacter(player, character)
+	task.spawn(moveCharacterToCheckpoint, player, character)
 
-Players.PlayerAdded:Connect(function(player)
-	checkpoints[player.UserId] = CFrame.new(Config.SpawnPosition)
+	local humanoid = character:WaitForChild("Humanoid", 8)
+	if not humanoid then
+		return
+	end
+
+	humanoid.Died:Connect(function()
+		local state = runStates[player.UserId]
+		if not state or state.expired or state.escaped then
+			return
+		end
+
+		state.deaths += 1
+		state.deadline -= Config.DeathPenaltySeconds
+		player:SetAttribute("DeathsThisRun", state.deaths)
+		player:SetAttribute("RunDeadline", state.deadline)
+
+		event:FireClient(player, "deathPenalty", {
+			seconds = Config.DeathPenaltySeconds,
+			deaths = state.deaths,
+		})
+	end)
+end
+
+local function setupPlayer(player)
+	beginRun(player)
 
 	player.CharacterAdded:Connect(function(character)
-		moveCharacterToCheckpoint(player, character)
+		bindCharacter(player, character)
 	end)
 
 	if player.Character then
-		task.spawn(moveCharacterToCheckpoint, player, player.Character)
+		bindCharacter(player, player.Character)
 	end
-end)
+end
+
+buildWorld()
+
+Players.PlayerAdded:Connect(setupPlayer)
 
 Players.PlayerRemoving:Connect(function(player)
 	checkpoints[player.UserId] = nil
+	runStates[player.UserId] = nil
 end)
 
 for _, player in ipairs(Players:GetPlayers()) do
-	checkpoints[player.UserId] = CFrame.new(Config.SpawnPosition)
-
-	player.CharacterAdded:Connect(function(character)
-		moveCharacterToCheckpoint(player, character)
-	end)
-
-	if player.Character then
-		task.spawn(moveCharacterToCheckpoint, player, player.Character)
-	end
+	setupPlayer(player)
 end
+
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		local now = serverNow()
+
+		for _, player in ipairs(Players:GetPlayers()) do
+			local state = runStates[player.UserId]
+			if state and not state.expired and not state.escaped and now >= state.deadline then
+				state.expired = true
+				player:SetAttribute("RunExpired", true)
+				event:FireClient(player, "expired")
+
+				task.delay(3.5, function()
+					if not player.Parent then
+						return
+					end
+
+					beginRun(player)
+					player:LoadCharacter()
+				end)
+			end
+		end
+	end
+end)
