@@ -82,6 +82,7 @@ local function beginRun(player)
 		sealCount = 0,
 		deaths = 0,
 		checkpointIndex = 0,
+		shortcutUsed = false,
 		escaped = false,
 		expired = false,
 		wardenGraceUntil = math.huge,
@@ -99,6 +100,7 @@ local function beginRun(player)
 	player:SetAttribute("RunExpired", false)
 	player:SetAttribute("LayerOneEscaped", false)
 	player:SetAttribute("DeathsThisRun", 0)
+	player:SetAttribute("AshRiftUsed", false)
 
 	resetWardenHomeIfSafe(player)
 
@@ -430,6 +432,148 @@ local function makeSoulSeal(info)
 	end)
 
 	pedestal.CanCollide = true
+end
+
+local function makeAshRift()
+	local rift = Instance.new("Model")
+	rift.Name = "AshRiftShortcut"
+	rift.Parent = world
+
+	local position = Config.AshRift.Position
+	local destination = Config.AshRift.Destination
+
+	local base = makePart(
+		"RiftBase",
+		Vector3.new(12, 1.4, 12),
+		CFrame.new(position - Vector3.new(0, 3.7, 0)),
+		Color3.fromRGB(28, 22, 25),
+		Enum.Material.Basalt,
+		rift
+	)
+	base.CanCollide = true
+
+	local ring = makePart(
+		"RiftRing",
+		Vector3.new(1.2, 11, 11),
+		CFrame.new(position + Vector3.new(0, 2.5, 0)) * CFrame.Angles(0, 0, math.rad(90)),
+		Color3.fromRGB(178, 48, 26),
+		Enum.Material.Neon,
+		rift
+	)
+	ring.Shape = Enum.PartType.Cylinder
+	ring.Transparency = 0.18
+	ring.CanCollide = false
+	ring.CanTouch = false
+
+	local core = makePart(
+		"RiftCore",
+		Vector3.new(7.2, 7.2, 0.7),
+		CFrame.new(position + Vector3.new(0, 2.5, 0)),
+		Color3.fromRGB(86, 16, 14),
+		Enum.Material.Neon,
+		rift
+	)
+	core.Transparency = 0.24
+	core.CanCollide = false
+	core.CanTouch = false
+
+	local light = Instance.new("PointLight")
+	light.Color = Color3.fromRGB(255, 76, 38)
+	light.Brightness = 3.1
+	light.Range = 30
+	light.Shadows = true
+	light.Parent = core
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.fromOffset(230, 54)
+	billboard.StudsOffset = Vector3.new(0, 8.5, 0)
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 150
+	billboard.Parent = core
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(17, 11, 12)
+	label.BackgroundTransparency = 0.18
+	label.BorderSizePixel = 0
+	label.Text = string.format("ASH RIFT\nSHORTCUT  ·  HP -%d", Config.AshRift.HealthCost)
+	label.TextColor3 = Color3.fromRGB(238, 128, 84)
+	label.TextStrokeTransparency = 0.65
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 14
+	label.TextWrapped = true
+	label.Parent = billboard
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = label
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.Name = "UseAshRiftPrompt"
+	prompt.ActionText = "裂け目を使う / USE"
+	prompt.ObjectText = string.format("ASH RIFT  ·  HP -%d", Config.AshRift.HealthCost)
+	prompt.HoldDuration = 0.65
+	prompt.MaxActivationDistance = 12
+	prompt.RequiresLineOfSight = false
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.Parent = core
+
+	prompt.Triggered:Connect(function(player)
+		local state = runStates[player.UserId]
+		if not state or not state.started or state.expired or state.escaped then
+			return
+		end
+
+		if state.shortcutUsed then
+			event:FireClient(player, "ashRiftUnavailable", {reason = "used"})
+			return
+		end
+
+		if state.sealCount < Config.AshRift.MinimumSeals then
+			event:FireClient(player, "ashRiftUnavailable", {
+				reason = "seals",
+				required = Config.AshRift.MinimumSeals,
+			})
+			return
+		end
+
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if not character or not humanoid or not root or humanoid.Health <= 0 then
+			return
+		end
+
+		if humanoid.Health <= Config.AshRift.HealthCost then
+			event:FireClient(player, "ashRiftUnavailable", {
+				reason = "health",
+				cost = Config.AshRift.HealthCost,
+			})
+			return
+		end
+
+		state.shortcutUsed = true
+		player:SetAttribute("AshRiftUsed", true)
+
+		humanoid.Health = math.max(1, humanoid.Health - Config.AshRift.HealthCost)
+		state.wardenGraceUntil = math.max(
+			state.wardenGraceUntil or 0,
+			serverNow() + (Config.AshRift.ArrivalGraceSeconds or 1.25)
+		)
+
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+		character:PivotTo(
+			CFrame.lookAt(
+				destination,
+				destination + Vector3.new(0, 0, -1)
+			)
+		)
+
+		event:FireClient(player, "ashRiftUsed", {
+			cost = Config.AshRift.HealthCost,
+		})
+	end)
 end
 
 local function weldToRoot(root, part)
@@ -1185,6 +1329,8 @@ local function buildWorld()
 	for _, sealInfo in ipairs(Config.Seals) do
 		makeSoulSeal(sealInfo)
 	end
+
+	makeAshRift()
 
 	local gate = Instance.new("Model")
 	gate.Name = "BlackGate"
