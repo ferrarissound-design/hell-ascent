@@ -36,6 +36,7 @@ local wardenModel = nil
 local wardenHome = Config.Warden.SpawnPosition
 local wardenAttackTimes = {}
 local wardenObservations = {}
+local sessionRecords = {}
 local setupPlayers = {}
 
 local function serverNow()
@@ -1287,10 +1288,42 @@ local function buildWorld()
 
 		state.escaped = true
 		player:SetAttribute("LayerOneEscaped", true)
+
+		local remaining = state.deadline and math.max(0, math.ceil(state.deadline - serverNow())) or 0
+		local clearSeconds = math.max(0, Config.RunDurationSeconds - remaining)
+
+		local record = sessionRecords[player.UserId]
+		if not record then
+			record = {
+				bestSeconds = nil,
+				bestDeaths = nil,
+				escapes = 0,
+			}
+			sessionRecords[player.UserId] = record
+		end
+
+		record.escapes += 1
+		local newBest = record.bestSeconds == nil
+			or clearSeconds < record.bestSeconds
+			or (clearSeconds == record.bestSeconds and state.deaths < (record.bestDeaths or math.huge))
+
+		if newBest then
+			record.bestSeconds = clearSeconds
+			record.bestDeaths = state.deaths
+		end
+
+		player:SetAttribute("SessionBestSeconds", record.bestSeconds)
+		player:SetAttribute("SessionEscapes", record.escapes)
+
 		event:FireClient(player, "escaped", {
 			layer = Config.LayerTitle,
-			remaining = state.deadline and math.max(0, math.ceil(state.deadline - serverNow())) or 0,
+			remaining = remaining,
+			clearSeconds = clearSeconds,
 			deaths = state.deaths,
+			bestSeconds = record.bestSeconds,
+			bestDeaths = record.bestDeaths,
+			escapes = record.escapes,
+			newBest = newBest,
 		})
 
 		task.delay(3, function()
@@ -1401,6 +1434,14 @@ local function setupPlayer(player)
 	end
 	setupPlayers[player] = true
 
+	sessionRecords[player.UserId] = sessionRecords[player.UserId] or {
+		bestSeconds = nil,
+		bestDeaths = nil,
+		escapes = 0,
+	}
+	player:SetAttribute("SessionBestSeconds", nil)
+	player:SetAttribute("SessionEscapes", 0)
+
 	beginRun(player)
 
 	player.CharacterAdded:Connect(function(character)
@@ -1455,6 +1496,7 @@ Players.PlayerRemoving:Connect(function(player)
 	runStates[player.UserId] = nil
 	wardenAttackTimes[player.UserId] = nil
 	wardenObservations[player.UserId] = nil
+	sessionRecords[player.UserId] = nil
 	setupPlayers[player] = nil
 end)
 
