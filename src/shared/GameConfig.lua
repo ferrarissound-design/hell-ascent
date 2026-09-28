@@ -31,6 +31,10 @@ Config.Sprint = {
 	UpdateInterval = 0.10,
 }
 
+Config.FinalRun = {
+	MinimumStartStamina = 72,
+}
+
 Config.Warden = {
 	SpawnPosition = Vector3.new(0, 8, -286),
 	Damage = 34,
