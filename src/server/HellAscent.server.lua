@@ -303,19 +303,21 @@ local function makeFallbackChainTemplate()
 	local model = Instance.new("Model")
 	model.Name = "GeneratedHellChain"
 
-	for i = 1, 7 do
-		local link = Instance.new("Part")
-		link.Name = "Link_" .. i
-		link.Shape = Enum.PartType.Cylinder
-		link.Size = Vector3.new(0.6, 2.1, 2.1)
-		link.CFrame = CFrame.new(0, (i - 1) * 1.55, 0)
-			* CFrame.Angles(0, 0, math.rad(90))
-			* CFrame.Angles(0, math.rad((i % 2) * 90), 0)
-		link.Anchored = true
-		link.CanCollide = false
-		link.Material = Enum.Material.Metal
-		link.Color = Color3.fromRGB(65, 56, 53)
-		link.Parent = model
+	for i = 1, 9 do
+		local bead = Instance.new("Part")
+		bead.Name = "Link_" .. i
+		bead.Shape = Enum.PartType.Ball
+		bead.Size = Vector3.new(0.48, 0.48, 0.48)
+		bead.CFrame = CFrame.new(
+			((i % 2 == 0) and 0.16 or -0.16),
+			(i - 1) * 0.72,
+			0
+		)
+		bead.Anchored = true
+		bead.CanCollide = false
+		bead.Material = Enum.Material.Metal
+		bead.Color = Color3.fromRGB(60, 52, 50)
+		bead.Parent = model
 	end
 
 	return model
@@ -413,12 +415,12 @@ local function decorateWithLocalTemplates()
 	if tombstoneIsLocal then localTemplateCount += 1 end
 
 	local treePlacements = {
-		{Vector3.new(-72, 4, 164), 24, -18},
-		{Vector3.new(74, 4, 118), 21, 22},
-		{Vector3.new(-78, 4, -48), 23, 12},
-		{Vector3.new(72, 4, -92), 20, -28},
-		{Vector3.new(-45, 4, -278), 19, 8},
-		{Vector3.new(52, 4, -300), 22, -14},
+		{Vector3.new(-78, 4, 166), 18, -18},
+		{Vector3.new(80, 4, 118), 17, 22},
+		{Vector3.new(-82, 4, -46), 18, 12},
+		{Vector3.new(82, 4, -92), 16, -28},
+		{Vector3.new(-58, 4, -276), 15, 8},
+		{Vector3.new(60, 4, -300), 16, -14},
 	}
 
 	for index, data in ipairs(treePlacements) do
@@ -434,19 +436,19 @@ local function decorateWithLocalTemplates()
 	end
 
 	local gravePlacements = {
-		Vector3.new(-52, 4, -38),
-		Vector3.new(-35, 4, -58),
-		Vector3.new(-58, 4, -78),
-		Vector3.new(40, 4, -36),
-		Vector3.new(58, 4, -60),
-		Vector3.new(36, 4, -83),
+		Vector3.new(-66, 4, -32),
+		Vector3.new(-48, 4, -58),
+		Vector3.new(-70, 4, -84),
+		Vector3.new(66, 4, -34),
+		Vector3.new(50, 4, -60),
+		Vector3.new(72, 4, -86),
 	}
 
 	for index, position in ipairs(gravePlacements) do
 		placeLocalClone(
 			tombstone,
 			"HellTombstone_" .. index,
-			9,
+			5.4,
 			CFrame.new(position) * CFrame.Angles(0, math.rad((index * 31) % 70 - 35), 0),
 			Color3.fromRGB(91, 83, 78),
 			decoration,
@@ -456,7 +458,7 @@ local function decorateWithLocalTemplates()
 		placeLocalClone(
 			skull,
 			"HellSkull_" .. index,
-			2.8,
+			2.2,
 			CFrame.new(position + Vector3.new((index % 2 == 0) and 4 or -4, 0, 3))
 				* CFrame.Angles(0, math.rad(index * 41), math.rad((index % 2 == 0) and 12 or -9)),
 			Color3.fromRGB(183, 166, 134),
@@ -466,17 +468,17 @@ local function decorateWithLocalTemplates()
 	end
 
 	local chainPlacements = {
-		CFrame.new(-18, 24, -168) * CFrame.Angles(0, 0, math.rad(90)),
-		CFrame.new(18, 28, -187) * CFrame.Angles(0, 0, math.rad(90)),
-		CFrame.new(-18, 26, -208) * CFrame.Angles(0, 0, math.rad(90)),
-		CFrame.new(18, 30, -229) * CFrame.Angles(0, 0, math.rad(90)),
+		CFrame.new(-27, 14, -166),
+		CFrame.new(27, 16, -188),
+		CFrame.new(-27, 15, -210),
+		CFrame.new(27, 17, -232),
 	}
 
 	for index, cframe in ipairs(chainPlacements) do
 		placeLocalClone(
 			chain,
 			"HellChain_" .. index,
-			24,
+			7.5,
 			cframe,
 			Color3.fromRGB(70, 60, 56),
 			decoration,
@@ -575,17 +577,19 @@ local function buildWorld()
 		end
 	end
 
-	makeDeadTree(Vector3.new(-62, 4, 178), 1.2)
-	makeDeadTree(Vector3.new(56, 4, 122), 0.95)
-	makeDeadTree(Vector3.new(-72, 4, -28), 1.1)
-	makeDeadTree(Vector3.new(68, 4, -74), 0.85)
+	makeDeadTree(Vector3.new(-68, 4, 178), 0.95)
+	makeDeadTree(Vector3.new(70, 4, 126), 0.8)
+	makeDeadTree(Vector3.new(-74, 4, -24), 0.9)
+	makeDeadTree(Vector3.new(74, 4, -78), 0.72)
+	makeDeadTree(Vector3.new(-42, 4, -268), 0.62)
+	makeDeadTree(Vector3.new(45, 4, -286), 0.66)
 
 	for i = 1, 8 do
 		local side = (i % 2 == 0) and 1 or -1
 		local skullMarker = makePart(
 			"BoneMarker_" .. i,
-			Vector3.new(3, 8 + (i % 3) * 3, 3),
-			CFrame.new(side * (28 + (i % 3) * 12), 6, -15 - i * 10)
+			Vector3.new(1.6, 6 + (i % 3) * 2, 1.6),
+			CFrame.new(side * (46 + (i % 3) * 10), 5, -15 - i * 10)
 				* CFrame.Angles(math.rad(12), 0, math.rad(side * 10)),
 			Color3.fromRGB(170, 154, 125),
 			Enum.Material.Limestone
@@ -685,22 +689,22 @@ local function buildWorld()
 	signAnchor.CanCollide = false
 
 	local billboard = Instance.new("BillboardGui")
-	billboard.Size = UDim2.fromOffset(420, 90)
+	billboard.Size = UDim2.fromOffset(300, 64)
 	billboard.AlwaysOnTop = false
-	billboard.MaxDistance = 500
+	billboard.MaxDistance = 360
 	billboard.Parent = signAnchor
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
-	label.Text = "THE BLACK GATE"
+	label.Text = "BLACK GATE"
 	label.TextColor3 = Color3.fromRGB(190, 163, 146)
 	label.TextStrokeTransparency = 0.45
 	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
 	label.Parent = billboard
 
-	for _, z in ipairs({145, 50, -45, -145, -245, -325}) do
+	for _, z in ipairs({145, 62, -35, -142, -238, -322}) do
 		local guide = makePart(
 			"RouteEmber",
 			Vector3.new(3, 3, 3),
