@@ -294,6 +294,35 @@ guideFolder.Name = "HellAscentLocalGuides"
 guideFolder.Parent = workspace
 
 local hellWorld = workspace:WaitForChild("HellAscentWorld")
+local gateHighlight = nil
+
+local function applyGateVisualState(isOpen)
+	local gate = hellWorld:FindFirstChild("BlackGate")
+	if not gate then
+		return
+	end
+
+	local veil = gate:FindFirstChild("ExitVeil")
+	if veil and veil:IsA("BasePart") then
+		veil.LocalTransparencyModifier = isOpen and 0.34 or 0
+	end
+
+	if isOpen then
+		if not gateHighlight or not gateHighlight.Parent then
+			gateHighlight = Instance.new("Highlight")
+			gateHighlight.Name = "LocalGateOpenHighlight"
+			gateHighlight.Adornee = gate
+			gateHighlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+			gateHighlight.FillTransparency = 1
+			gateHighlight.OutlineTransparency = 0.18
+			gateHighlight.OutlineColor = Color3.fromRGB(255, 92, 48)
+			gateHighlight.Parent = gate
+		end
+		gateHighlight.Enabled = true
+	elseif gateHighlight then
+		gateHighlight.Enabled = false
+	end
+end
 
 local function applySealVisualState(sealId, isBroken)
 	local sealModel = hellWorld:FindFirstChild("SoulSeal_" .. sealId)
@@ -428,9 +457,11 @@ local function refreshRunStatus()
 		marker.billboard.Enabled = not player:GetAttribute("GateOpen") and not brokenSeals[id]
 	end
 
+	local gateOpen = player:GetAttribute("GateOpen") == true
 	if gateMarker then
-		gateMarker.billboard.Enabled = player:GetAttribute("GateOpen") == true
+		gateMarker.billboard.Enabled = gateOpen
 	end
+	applyGateVisualState(gateOpen)
 end
 
 local function directionArrow(fromPosition, targetPosition)
@@ -598,6 +629,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 			endingFrame = nil
 		end
 		resetSealVisuals()
+		applyGateVisualState(false)
 		refreshRunStatus()
 	elseif kind == "runClockStarted" then
 		timerLabel.Text = "残り  " .. formatTime(payload.duration or Config.RunDurationSeconds)
