@@ -618,7 +618,30 @@ local function isWardenObserved(player)
 		return false
 	end
 
-	return serverNow() - report.updated <= (Config.Warden.ObservationFreshnessSeconds or 0.75)
+	if serverNow() - report.updated > (Config.Warden.ObservationFreshnessSeconds or 0.75) then
+		return false
+	end
+
+	if not wardenModel or not wardenModel.PrimaryPart then
+		return false
+	end
+
+	local character = player.Character
+	local originPart = character and (character:FindFirstChild("Head") or character:FindFirstChild("HumanoidRootPart"))
+	if not originPart then
+		return false
+	end
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {character}
+	params.IgnoreWater = true
+
+	local origin = originPart.Position
+	local target = wardenModel.PrimaryPart.Position + Vector3.new(0, 4, 0)
+	local result = workspace:Raycast(origin, target - origin, params)
+
+	return not result or result.Instance:IsDescendantOf(wardenModel)
 end
 
 local function faceWardenToward(targetPosition)
