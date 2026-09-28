@@ -1202,10 +1202,10 @@ local function findLocalTemplate(templateName)
 		end
 	end
 
-	warn(
-		"[HELL ASCENT] Missing local template:",
+	print(
+		"[HELL ASCENT][OPTIONAL] Missing local template:",
 		templateName,
-		"- add it to ServerStorage/" .. TEMPLATE_FOLDER_NAME
+		"- generated/default decoration will be used"
 	)
 	return nil
 end
@@ -1792,9 +1792,12 @@ local function validateReleaseWorld()
 		"BoneField",
 		"ExecutionCauseway",
 		"GatePlaza",
+		"SoulSpawn",
 		"BlackGate",
+		"ExitVeil",
 		"TheWarden",
 		"AshRiftShortcut",
+		"UseAshRiftPrompt",
 	}
 
 	for _, name in ipairs(requiredNames) do
@@ -1805,8 +1808,21 @@ local function validateReleaseWorld()
 
 	for _, sealInfo in ipairs(Config.Seals) do
 		local sealName = "SoulSeal_" .. sealInfo.id
-		if not world:FindFirstChild(sealName, true) then
+		local sealModel = world:FindFirstChild(sealName, true)
+		if not sealModel then
 			table.insert(missing, sealName)
+		elseif not sealModel:FindFirstChild("BreakSealPrompt", true) then
+			table.insert(missing, sealName .. "/BreakSealPrompt")
+		end
+	end
+
+	for _, checkpoint in ipairs(Config.Checkpoints) do
+		local suffix = checkpoint.name:gsub("%s+", "_")
+		if not world:FindFirstChild("Checkpoint_" .. suffix, true) then
+			table.insert(missing, "Checkpoint_" .. suffix)
+		end
+		if not world:FindFirstChild("SoulAnchorBeacon_" .. suffix, true) then
+			table.insert(missing, "SoulAnchorBeacon_" .. suffix)
 		end
 	end
 
