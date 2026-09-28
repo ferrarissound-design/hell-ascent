@@ -32,6 +32,7 @@ local stageBannerSerial = 0
 local wardenSeenThisRun = false
 local lastWardenObservedReport = 0
 local lastWardenObservedState = false
+local finalRunActive = false
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
@@ -122,6 +123,33 @@ navLabel.TextSize = 15
 navLabel.TextXAlignment = Enum.TextXAlignment.Left
 navLabel.TextTruncate = Enum.TextTruncate.AtEnd
 navLabel.Parent = header
+
+local finalRunPanel = Instance.new("Frame")
+finalRunPanel.AnchorPoint = Vector2.new(0.5, 0)
+finalRunPanel.Position = UDim2.new(0.5, 0, 0, 103)
+finalRunPanel.Size = UDim2.new(0.88, 0, 0, 58)
+finalRunPanel.BackgroundColor3 = Color3.fromRGB(20, 10, 10)
+finalRunPanel.BackgroundTransparency = 0.12
+finalRunPanel.BorderSizePixel = 0
+finalRunPanel.Visible = false
+finalRunPanel.ZIndex = 12
+finalRunPanel.Parent = gui
+
+local finalRunCorner = Instance.new("UICorner")
+finalRunCorner.CornerRadius = UDim.new(0, 10)
+finalRunCorner.Parent = finalRunPanel
+
+local finalRunLabel = Instance.new("TextLabel")
+finalRunLabel.Size = UDim2.fromScale(1, 1)
+finalRunLabel.BackgroundTransparency = 1
+finalRunLabel.Text = "FINAL RUN"
+finalRunLabel.TextColor3 = Color3.fromRGB(255, 112, 62)
+finalRunLabel.TextStrokeTransparency = 0.7
+finalRunLabel.Font = Enum.Font.GothamBlack
+finalRunLabel.TextSize = 15
+finalRunLabel.TextWrapped = true
+finalRunLabel.ZIndex = 13
+finalRunLabel.Parent = finalRunPanel
 
 local staminaPanel = Instance.new("Frame")
 staminaPanel.AnchorPoint = Vector2.new(0.5, 1)
@@ -766,6 +794,8 @@ local function refreshRunStatus()
 	end
 
 	local gateOpen = player:GetAttribute("GateOpen") == true
+	finalRunActive = gateOpen
+	finalRunPanel.Visible = gateOpen and not escapeShown
 	if gateMarker then
 		gateMarker.billboard.Enabled = gateOpen
 	end
@@ -970,6 +1000,29 @@ local function updateNavigation()
 	local warden = hellWorld and hellWorld:FindFirstChild("TheWarden")
 	local wardenRoot = warden and warden:FindFirstChild("HumanoidRootPart")
 
+	if finalRunActive then
+		local gateDistance = (Config.ExitPosition - root.Position).Magnitude
+		local gateArrow = directionArrow(root.Position, Config.ExitPosition)
+		local wardenText = "WARDEN 不明"
+
+		if wardenRoot then
+			local wardenDistance = (wardenRoot.Position - root.Position).Magnitude
+			local wardenArrow = directionArrow(root.Position, wardenRoot.Position)
+			wardenText = string.format(
+				"WARDEN %s %dm",
+				wardenArrow,
+				math.floor(wardenDistance + 0.5)
+			)
+		end
+
+		finalRunLabel.Text = string.format(
+			"FINAL RUN\nBLACK GATE %s %dm   |   %s",
+			gateArrow,
+			math.floor(gateDistance + 0.5),
+			wardenText
+		)
+	end
+
 	if wardenRoot and (player:GetAttribute("SealsBroken") or 0) > 0 then
 		local wardenDistance = (wardenRoot.Position - root.Position).Magnitude
 		local wardenArrow = directionArrow(root.Position, wardenRoot.Position)
@@ -1057,8 +1110,14 @@ event.OnClientEvent:Connect(function(kind, payload)
 		else
 			showToast("ASH RIFTは今使えない")
 		end
+	elseif kind == "finalRun" then
+		finalRunActive = true
+		finalRunPanel.Visible = true
+		showToast(string.format(
+			"FINAL RUN  /  スタミナ %d  /  BLACK GATEへ",
+			math.floor((payload and payload.stamina) or Config.FinalRun.MinimumStartStamina)
+		))
 	elseif kind == "gateOpen" then
-		showToast("BLACK GATEが開いた。門へ向かえ")
 		refreshRunStatus()
 	elseif kind == "gateLocked" then
 		showToast(string.format("封印が足りない  %d / %d", payload.count, payload.total))
@@ -1070,6 +1129,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 		setSprintRequested(false)
 		brokenSeals = {}
 		escapeShown = false
+		finalRunActive = false
+		finalRunPanel.Visible = false
 		respawnSafeUntil = 0
 		currentEscalationStage = -1
 		wardenSeenThisRun = false
@@ -1090,6 +1151,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 		timerLabel.Text = "残り  " .. formatTime(payload.duration or Config.RunDurationSeconds)
 		timerLabel.TextColor3 = Color3.fromRGB(222, 174, 145)
 	elseif kind == "escaped" then
+		finalRunPanel.Visible = false
 		showEscape(payload)
 	end
 end)
