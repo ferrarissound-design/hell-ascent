@@ -189,42 +189,127 @@ local function makeCheckpoint(info)
 	end)
 end
 
-local function createCreatorMeshTemplate(assetInfo)
-	local success, result = pcall(function()
-		return AssetService:CreateMeshPartAsync(
-			Content.fromUri("rbxassetid://" .. tostring(assetInfo.id)),
-			{
-				CollisionFidelity = Enum.CollisionFidelity.Box,
-				RenderFidelity = Enum.RenderFidelity.Automatic,
-			}
-		)
+local function sanitizeCreatorAsset(root)
+	for _, descendant in ipairs(root:GetDescendants()) do
+		if descendant:IsA("LuaSourceContainer") then
+			descendant:Destroy()
+		elseif descendant:IsA("ProximityPrompt")
+			or descendant:IsA("ClickDetector")
+			or descendant:IsA("TouchTransmitter")
+		then
+			descendant:Destroy()
+		elseif descendant:IsA("BasePart") then
+			descendant.Anchored = true
+			descendant.CanCollide = false
+			descendant.CanTouch = false
+			descendant.CastShadow = true
+		end
+	end
+
+	if root:IsA("BasePart") then
+		root.Anchored = true
+		root.CanCollide = false
+		root.CanTouch = false
+		root.CastShadow = true
+	end
+end
+
+local function loadCreatorAssetTemplate(assetInfo)
+	local success, loaded = pcall(function()
+		return AssetService:LoadAssetAsync(assetInfo.id)
 	end)
 
-	if not success or not result then
-		warn("[HELL ASCENT] Creator asset failed:", assetInfo.name, assetInfo.id, result)
+	if not success or not loaded then
+		warn(
+			"[HELL ASCENT] Creator asset failed:",
+			assetInfo.name,
+			assetInfo.id,
+			loaded
+		)
 		return nil
 	end
 
-	result.Name = assetInfo.name
-	result.Anchored = true
-	result.CanCollide = false
-	result.CastShadow = true
-	return result
+	local model
+	if loaded:IsA("Model") then
+		model = loaded
+	else
+		model = Instance.new("Model")
+		loaded.Parent = model
+	end
+
+	model.Name = assetInfo.name
+	sanitizeCreatorAsset(model)
+
+	local hasGeometry = false
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			hasGeometry = true
+			break
+		end
+	end
+
+	if not hasGeometry then
+		warn(
+			"[HELL ASCENT] Creator asset had no usable geometry:",
+			assetInfo.name,
+			assetInfo.id
+		)
+		model:Destroy()
+		return nil
+	end
+
+	print(
+		"[HELL ASCENT] Creator asset loaded:",
+		assetInfo.name,
+		assetInfo.id
+	)
+	return model
 end
 
-local function placeCreatorClone(template, name, size, cframe, color, parent)
+local function tintModel(model, color)
+	if not color then
+		return
+	end
+
+	for _, descendant in ipairs(model:GetDescendants()) do
+		if descendant:IsA("BasePart") then
+			descendant.Color = color
+		end
+	end
+end
+
+local function placeCreatorClone(template, name, targetHeight, cframe, color, parent, grounded)
 	if not template then
 		return nil
 	end
 
 	local clone = template:Clone()
 	clone.Name = name
-	clone.Size = size
-	clone.CFrame = cframe
-	clone.Anchored = true
-	clone.CanCollide = false
-	clone.Color = color or Color3.fromRGB(95, 78, 68)
 	clone.Parent = parent or world
+	sanitizeCreatorAsset(clone)
+
+	local _, initialSize = clone:GetBoundingBox()
+	if initialSize.Y > 0.01 then
+		local scaleFactor = targetHeight / initialSize.Y
+		local scaled = pcall(function()
+			clone:ScaleTo(clone:GetScale() * scaleFactor)
+		end)
+
+		if not scaled then
+			warn("[HELL ASCENT] Could not scale Creator asset:", name)
+		end
+	end
+
+	tintModel(clone, color)
+	clone:PivotTo(cframe)
+
+	if grounded then
+		local boxCFrame, boxSize = clone:GetBoundingBox()
+		local bottomY = boxCFrame.Position.Y - (boxSize.Y * 0.5)
+		local deltaY = cframe.Position.Y - bottomY
+		clone:PivotTo(clone:GetPivot() + Vector3.new(0, deltaY, 0))
+	end
+
 	return clone
 end
 
@@ -233,57 +318,68 @@ local function decorateWithCreatorAssets()
 	decoration.Name = "CreatorStoreDecoration"
 	decoration.Parent = world
 
-	local deadTree = createCreatorMeshTemplate(AssetConfig.DeadTree)
-	local skull = createCreatorMeshTemplate(AssetConfig.Skull)
-	local chain = createCreatorMeshTemplate(AssetConfig.Chain)
-	local tombstone = createCreatorMeshTemplate(AssetConfig.Tombstone)
+	local deadTree = loadCreatorAssetTemplate(AssetConfig.DeadTree)
+	local skull = loadCreatorAssetTemplate(AssetConfig.Skull)
+	local chain = loadCreatorAssetTemplate(AssetConfig.Chain)
+	local tombstone = loadCreatorAssetTemplate(AssetConfig.Tombstone)
+
+	local loadedCount = 0
+	for _, template in ipairs({deadTree, skull, chain, tombstone}) do
+		if template then
+			loadedCount += 1
+		end
+	end
 
 	local treePlacements = {
-		{Vector3.new(-72, 7, 164), 14, -18},
-		{Vector3.new(74, 7, 118), 12, 22},
-		{Vector3.new(-78, 7, -48), 13, 12},
-		{Vector3.new(72, 7, -92), 11, -28},
-		{Vector3.new(-45, 7, -278), 10, 8},
-		{Vector3.new(52, 7, -300), 12, -14},
+		{Vector3.new(-72, 4, 164), 24, -18},
+		{Vector3.new(74, 4, 118), 21, 22},
+		{Vector3.new(-78, 4, -48), 23, 12},
+		{Vector3.new(72, 4, -92), 20, -28},
+		{Vector3.new(-45, 4, -278), 19, 8},
+		{Vector3.new(52, 4, -300), 22, -14},
 	}
 
 	for index, data in ipairs(treePlacements) do
 		placeCreatorClone(
 			deadTree,
-			"DeadTree_" .. index,
-			Vector3.new(data[2], data[2] * 1.8, data[2]),
+			"CreatorDeadTree_" .. index,
+			data[2],
 			CFrame.new(data[1]) * CFrame.Angles(0, math.rad(data[3]), 0),
-			Color3.fromRGB(53, 43, 39),
-			decoration
+			Color3.fromRGB(58, 46, 42),
+			decoration,
+			true
 		)
 	end
 
 	local gravePlacements = {
-		Vector3.new(-52, 5, -38),
-		Vector3.new(-35, 5, -58),
-		Vector3.new(-58, 5, -78),
-		Vector3.new(40, 5, -36),
-		Vector3.new(58, 5, -60),
-		Vector3.new(36, 5, -83),
+		Vector3.new(-52, 4, -38),
+		Vector3.new(-35, 4, -58),
+		Vector3.new(-58, 4, -78),
+		Vector3.new(40, 4, -36),
+		Vector3.new(58, 4, -60),
+		Vector3.new(36, 4, -83),
 	}
 
 	for index, position in ipairs(gravePlacements) do
 		placeCreatorClone(
 			tombstone,
-			"Tombstone_" .. index,
-			Vector3.new(5, 9, 3),
+			"CreatorTombstone_" .. index,
+			9,
 			CFrame.new(position) * CFrame.Angles(0, math.rad((index * 31) % 70 - 35), 0),
-			Color3.fromRGB(96, 88, 82),
-			decoration
+			Color3.fromRGB(91, 83, 78),
+			decoration,
+			true
 		)
 
 		placeCreatorClone(
 			skull,
-			"Skull_" .. index,
-			Vector3.new(2.5, 2.5, 2.5),
-			CFrame.new(position + Vector3.new((index % 2 == 0) and 4 or -4, -0.4, 3)),
-			Color3.fromRGB(184, 169, 137),
-			decoration
+			"CreatorSkull_" .. index,
+			2.8,
+			CFrame.new(position + Vector3.new((index % 2 == 0) and 4 or -4, 0, 3))
+				* CFrame.Angles(0, math.rad(index * 41), math.rad((index % 2 == 0) and 12 or -9)),
+			Color3.fromRGB(183, 166, 134),
+			decoration,
+			true
 		)
 	end
 
@@ -297,11 +393,12 @@ local function decorateWithCreatorAssets()
 	for index, cframe in ipairs(chainPlacements) do
 		placeCreatorClone(
 			chain,
-			"HangingChain_" .. index,
-			Vector3.new(4, 24, 4),
+			"CreatorChain_" .. index,
+			24,
 			cframe,
-			Color3.fromRGB(67, 58, 55),
-			decoration
+			Color3.fromRGB(70, 60, 56),
+			decoration,
+			false
 		)
 	end
 
@@ -310,7 +407,11 @@ local function decorateWithCreatorAssets()
 	if chain then chain:Destroy() end
 	if tombstone then tombstone:Destroy() end
 
-	print("[HELL ASCENT] Creator Store decoration pass finished")
+	print(
+		"[HELL ASCENT] Creator Store decoration pass finished:",
+		loadedCount,
+		"/ 4 asset types loaded"
+	)
 end
 
 local function buildWorld()
