@@ -18,6 +18,9 @@ Config.Warden = {
 	AttackRange = 4.6,
 	AttackCooldown = 1.6,
 	RepathSeconds = 0.75,
+	StageOneWatchDistance = 105,
+	FearAwarenessRange = 150,
+	FearCriticalRange = 28,
 	Stages = {
 		[0] = {WalkSpeed = 0, DetectionRange = 0},
 		[1] = {WalkSpeed = 7, DetectionRange = 180},
