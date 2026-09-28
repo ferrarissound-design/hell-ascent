@@ -1924,6 +1924,10 @@ local function bindCharacter(player, character)
 			return
 		end
 
+		if player.Character ~= character then
+			return
+		end
+
 		if not boundState or boundState.expired or boundState.escaped then
 			return
 		end
