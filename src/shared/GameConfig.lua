@@ -20,6 +20,7 @@ Config.Warden = {
 	RepathSeconds = 0.75,
 	StageOneWatchDistance = 105,
 	StageOneCreepSpeed = 5.2,
+	StageTwoObservedSpeed = 7.2,
 	ObservationFreshnessSeconds = 0.75,
 	FearAwarenessRange = 150,
 	FearCriticalRange = 28,
