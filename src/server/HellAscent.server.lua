@@ -1150,6 +1150,7 @@ local function sanitizeLocalTemplate(root)
 			descendant.Anchored = true
 			descendant.CanCollide = false
 			descendant.CanTouch = false
+			descendant.CanQuery = false
 			descendant.CastShadow = true
 		end
 	end
@@ -1158,6 +1159,7 @@ local function sanitizeLocalTemplate(root)
 		root.Anchored = true
 		root.CanCollide = false
 		root.CanTouch = false
+		root.CanQuery = false
 		root.CastShadow = true
 	end
 end
@@ -1542,6 +1544,8 @@ local function buildWorld()
 			Enum.Material.Limestone
 		)
 		skullMarker.CanCollide = false
+		skullMarker.CanTouch = false
+		skullMarker.CanQuery = false
 	end
 
 	for checkpointIndex, checkpoint in ipairs(Config.Checkpoints) do
@@ -1764,6 +1768,8 @@ local function buildWorld()
 		)
 		guide.Shape = Enum.PartType.Ball
 		guide.CanCollide = false
+		guide.CanTouch = false
+		guide.CanQuery = false
 
 		local guideLight = Instance.new("PointLight")
 		guideLight.Color = Color3.fromRGB(255, 94, 43)
