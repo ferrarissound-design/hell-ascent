@@ -164,7 +164,17 @@ local function breakSoulSeal(player, sealInfo)
 	end
 
 	if state.sealCount >= #Config.Seals then
+		state.sprintStamina = math.max(
+			state.sprintStamina,
+			Config.FinalRun.MinimumStartStamina
+		)
+		player:SetAttribute("SprintStamina", math.floor(state.sprintStamina + 0.5))
 		player:SetAttribute("GateOpen", true)
+
+		event:FireClient(player, "finalRun", {
+			stamina = state.sprintStamina,
+			gatePosition = Config.ExitPosition,
+		})
 		event:FireClient(player, "gateOpen")
 	end
 end
