@@ -55,9 +55,9 @@ Config.Warden = {
 	FearCriticalRange = 28,
 	Stages = {
 		[0] = {WalkSpeed = 0, DetectionRange = 0},
-		[1] = {WalkSpeed = 7, DetectionRange = 180},
+		[1] = {WalkSpeed = 7, DetectionRange = 300},
 		[2] = {WalkSpeed = 10, DetectionRange = 320},
-		[3] = {WalkSpeed = 14.2, DetectionRange = 650},
+		[3] = {WalkSpeed = 18, DetectionRange = 650},
 	},
 }
 
