@@ -18,9 +18,9 @@ Config.Warden = {
 	RepathSeconds = 0.75,
 	Stages = {
 		[0] = {WalkSpeed = 0, DetectionRange = 0},
-		[1] = {WalkSpeed = 8, DetectionRange = 125},
-		[2] = {WalkSpeed = 11.5, DetectionRange = 185},
-		[3] = {WalkSpeed = 15, DetectionRange = 360},
+		[1] = {WalkSpeed = 7.5, DetectionRange = 460},
+		[2] = {WalkSpeed = 10.5, DetectionRange = 520},
+		[3] = {WalkSpeed = 14.5, DetectionRange = 650},
 	},
 }
 
