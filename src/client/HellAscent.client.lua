@@ -4,9 +4,15 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("GameConfig"))
 local event = ReplicatedStorage:WaitForChild("HellAscentRemotes"):WaitForChild("HellAscentEvent")
+
+local oldGui = playerGui:FindFirstChild("HellAscentUI")
+if oldGui then
+	oldGui:Destroy()
+end
 
 local brokenSeals = {}
 local guideMarkers = {}
@@ -15,12 +21,15 @@ local escapeShown = false
 local endingFrame = nil
 local respawnSafeUntil = 0
 local gateMarker = nil
+local toastSerial = 0
+local activeToastTween = nil
+local activeToastFade = nil
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
 gui.IgnoreGuiInset = false
 gui.ResetOnSpawn = false
-gui.Parent = player:WaitForChild("PlayerGui")
+gui.Parent = playerGui
 
 local header = Instance.new("Frame")
 header.AnchorPoint = Vector2.new(0.5, 0)
@@ -149,19 +158,35 @@ local function formatTime(seconds)
 end
 
 local function showToast(text)
+	toastSerial += 1
+	local serial = toastSerial
+
+	if activeToastTween then
+		activeToastTween:Cancel()
+	end
+	if activeToastFade then
+		activeToastFade:Cancel()
+	end
+
 	toast.Text = text
-	TweenService:Create(
+	activeToastTween = TweenService:Create(
 		toast,
 		TweenInfo.new(0.18),
 		{BackgroundTransparency = 0.18, TextTransparency = 0, TextStrokeTransparency = 0.65}
-	):Play()
+	)
+	activeToastTween:Play()
 
 	task.delay(2.0, function()
-		TweenService:Create(
+		if serial ~= toastSerial then
+			return
+		end
+
+		activeToastFade = TweenService:Create(
 			toast,
 			TweenInfo.new(0.35),
 			{BackgroundTransparency = 1, TextTransparency = 1, TextStrokeTransparency = 1}
-		):Play()
+		)
+		activeToastFade:Play()
 	end)
 end
 
@@ -560,12 +585,17 @@ event.OnClientEvent:Connect(function(kind, payload)
 		brokenSeals = {}
 		escapeShown = false
 		respawnSafeUntil = 0
+		timerLabel.Text = "準備中"
+		timerLabel.TextColor3 = Color3.fromRGB(196, 208, 220)
 		if endingFrame then
 			endingFrame:Destroy()
 			endingFrame = nil
 		end
 		resetSealVisuals()
 		refreshRunStatus()
+	elseif kind == "runClockStarted" then
+		timerLabel.Text = "残り  " .. formatTime(payload.duration or Config.RunDurationSeconds)
+		timerLabel.TextColor3 = Color3.fromRGB(222, 174, 145)
 	elseif kind == "escaped" then
 		showEscape(payload)
 	end
@@ -601,6 +631,9 @@ RunService.RenderStepped:Connect(function()
 		else
 			timerLabel.TextColor3 = Color3.fromRGB(222, 174, 145)
 		end
+	else
+		timerLabel.Text = "準備中"
+		timerLabel.TextColor3 = Color3.fromRGB(196, 208, 220)
 	end
 
 	local now = os.clock()
