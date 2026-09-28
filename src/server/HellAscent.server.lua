@@ -87,6 +87,7 @@ local function beginRun(player)
 		sprintActive = false,
 		sprintStamina = Config.Sprint.MaxStamina,
 		lastSprintStop = serverNow(),
+		lastVoidRescue = 0,
 		escaped = false,
 		expired = false,
 		wardenGraceUntil = math.huge,
@@ -107,6 +108,9 @@ local function beginRun(player)
 	player:SetAttribute("AshRiftUsed", false)
 	player:SetAttribute("SprintStamina", Config.Sprint.MaxStamina)
 	player:SetAttribute("SprintActive", false)
+	for _, sealInfo in ipairs(Config.Seals) do
+		player:SetAttribute("Seal_" .. sealInfo.id, false)
+	end
 
 	resetWardenHomeIfSafe(player)
 
@@ -133,6 +137,130 @@ local function startRunClock(player)
 	})
 end
 
+local function repairPlayerProgress(player, state)
+	if not state then
+		return
+	end
+
+	local repairedCount = 0
+	for _, sealInfo in ipairs(Config.Seals) do
+		local attributeName = "Seal_" .. sealInfo.id
+		local broken = state.seals[sealInfo.id] == true or player:GetAttribute(attributeName) == true
+		if broken then
+			state.seals[sealInfo.id] = true
+			repairedCount += 1
+		end
+		if player:GetAttribute(attributeName) ~= broken then
+			player:SetAttribute(attributeName, broken)
+		end
+	end
+
+	local changed = false
+	if state.sealCount ~= repairedCount then
+		state.sealCount = repairedCount
+		changed = true
+	end
+
+	if player:GetAttribute("SealsBroken") ~= repairedCount then
+		player:SetAttribute("SealsBroken", repairedCount)
+		changed = true
+	end
+
+	if player:GetAttribute("TotalSeals") ~= #Config.Seals then
+		player:SetAttribute("TotalSeals", #Config.Seals)
+		changed = true
+	end
+
+	local gateShouldBeOpen = repairedCount >= #Config.Seals
+	if player:GetAttribute("GateOpen") ~= gateShouldBeOpen then
+		player:SetAttribute("GateOpen", gateShouldBeOpen)
+		changed = true
+	end
+
+	if gateShouldBeOpen and state.sprintStamina < Config.FinalRun.MinimumStartStamina then
+		state.sprintStamina = Config.FinalRun.MinimumStartStamina
+		player:SetAttribute("SprintStamina", math.floor(state.sprintStamina + 0.5))
+		changed = true
+	end
+
+	if player:GetAttribute("DeathsThisRun") ~= state.deaths then
+		player:SetAttribute("DeathsThisRun", state.deaths)
+		changed = true
+	end
+
+	if player:GetAttribute("AshRiftUsed") ~= state.shortcutUsed then
+		player:SetAttribute("AshRiftUsed", state.shortcutUsed)
+		changed = true
+	end
+
+	if player:GetAttribute("RunExpired") ~= state.expired then
+		player:SetAttribute("RunExpired", state.expired)
+		changed = true
+	end
+
+	if player:GetAttribute("LayerOneEscaped") ~= state.escaped then
+		player:SetAttribute("LayerOneEscaped", state.escaped)
+		changed = true
+	end
+
+	if changed then
+		warn(
+			"[HELL ASCENT][SELF-REPAIR]",
+			player.Name,
+			"seals=" .. tostring(repairedCount),
+			"gate=" .. tostring(gateShouldBeOpen)
+		)
+	end
+end
+
+local function rescuePlayerFromVoid(player, state)
+	if not state
+		or not state.started
+		or state.expired
+		or state.escaped
+	then
+		return
+	end
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if not character or not humanoid or not root or humanoid.Health <= 0 then
+		return
+	end
+
+	if root.Position.Y >= Config.Safety.VoidY then
+		return
+	end
+
+	local now = serverNow()
+	if now - (state.lastVoidRescue or 0) < 2 then
+		return
+	end
+	state.lastVoidRescue = now
+
+	local target = checkpoints[player.UserId] or CFrame.new(Config.SpawnPosition)
+	root.AssemblyLinearVelocity = Vector3.zero
+	root.AssemblyAngularVelocity = Vector3.zero
+	character:PivotTo(target + Vector3.new(0, 3, 0))
+
+	humanoid.Health = humanoid.MaxHealth
+	state.sprintRequested = false
+	state.sprintActive = false
+	state.sprintStamina = Config.Sprint.MaxStamina
+	state.lastSprintStop = now
+	state.wardenGraceUntil = math.max(
+		state.wardenGraceUntil or 0,
+		now + Config.Safety.VoidRescueGraceSeconds
+	)
+
+	player:SetAttribute("SprintActive", false)
+	player:SetAttribute("SprintStamina", Config.Sprint.MaxStamina)
+
+	event:FireClient(player, "voidRescue")
+	warn("[HELL ASCENT][VOID-RESCUE]", player.Name, "returned to latest Soul Anchor")
+end
+
 local function breakSoulSeal(player, sealInfo)
 	local state = runStates[player.UserId]
 	if not state or state.expired or state.escaped then
@@ -146,6 +274,7 @@ local function breakSoulSeal(player, sealInfo)
 
 	state.seals[sealInfo.id] = true
 	state.sealCount += 1
+	player:SetAttribute("Seal_" .. sealInfo.id, true)
 	player:SetAttribute("SealsBroken", state.sealCount)
 
 	event:FireClient(player, "sealBroken", {
@@ -1479,6 +1608,19 @@ local function buildWorld()
 		player:SetAttribute("SessionBestSeconds", record.bestSeconds)
 		player:SetAttribute("SessionEscapes", record.escapes)
 
+		local clearMinutes = math.floor(clearSeconds / 60)
+		local clearRemainder = clearSeconds % 60
+		print(string.format(
+			"[HELL ASCENT][CLEAR] %s | %02d:%02d | deaths=%d | ashRift=%s | escapes=%d | newBest=%s",
+			player.Name,
+			clearMinutes,
+			clearRemainder,
+			state.deaths,
+			tostring(state.shortcutUsed),
+			record.escapes,
+			tostring(newBest)
+		))
+
 		event:FireClient(player, "escaped", {
 			layer = Config.LayerTitle,
 			remaining = remaining,
@@ -1759,6 +1901,22 @@ task.spawn(function()
 					beginRun(player)
 					player:LoadCharacter()
 				end)
+			end
+		end
+	end
+end)
+
+task.spawn(function()
+	local interval = Config.Safety.CheckInterval or 0.5
+
+	while true do
+		task.wait(interval)
+
+		for _, player in ipairs(Players:GetPlayers()) do
+			local state = runStates[player.UserId]
+			if state then
+				repairPlayerProgress(player, state)
+				rescuePlayerFromVoid(player, state)
 			end
 		end
 	end
