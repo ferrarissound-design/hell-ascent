@@ -28,6 +28,7 @@ local activeToastFade = nil
 local hellWorld = nil
 local currentEscalationStage = -1
 local stageBannerSerial = 0
+local wardenSeenThisRun = false
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
@@ -153,6 +154,14 @@ hellPressure.BackgroundTransparency = 1
 hellPressure.BorderSizePixel = 0
 hellPressure.ZIndex = 5
 hellPressure.Parent = gui
+
+local wardenPressure = Instance.new("Frame")
+wardenPressure.Size = UDim2.fromScale(1, 1)
+wardenPressure.BackgroundColor3 = Color3.fromRGB(92, 7, 5)
+wardenPressure.BackgroundTransparency = 1
+wardenPressure.BorderSizePixel = 0
+wardenPressure.ZIndex = 6
+wardenPressure.Parent = gui
 
 local stageBanner = Instance.new("TextLabel")
 stageBanner.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -706,6 +715,83 @@ local function directionArrow(fromPosition, targetPosition)
 	end
 end
 
+local function getWardenParts()
+	if not hellWorld then
+		return nil, nil, nil
+	end
+
+	local warden = hellWorld:FindFirstChild("TheWarden")
+	local root = warden and warden:FindFirstChild("HumanoidRootPart")
+	local faceSlit = warden and warden:FindFirstChild("FaceSlit")
+	return warden, root, faceSlit
+end
+
+local function updateWardenFear(now)
+	local character = player.Character
+	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
+	local camera = workspace.CurrentCamera
+	local broken = player:GetAttribute("SealsBroken") or 0
+	local _, wardenRoot, faceSlit = getWardenParts()
+
+	if not playerRoot or not camera or not wardenRoot or broken <= 0 then
+		wardenPressure.BackgroundTransparency = 1
+		if faceSlit then
+			local faceLight = faceSlit:FindFirstChildOfClass("PointLight")
+			if faceLight then
+				faceLight.Brightness = 2.6
+				faceLight.Range = 18
+			end
+		end
+		return
+	end
+
+	local distance = (wardenRoot.Position - playerRoot.Position).Magnitude
+	local awarenessRange = Config.Warden.FearAwarenessRange or 150
+	local criticalRange = Config.Warden.FearCriticalRange or 28
+
+	if distance >= awarenessRange then
+		wardenPressure.BackgroundTransparency = 1
+		if faceSlit then
+			local faceLight = faceSlit:FindFirstChildOfClass("PointLight")
+			if faceLight then
+				faceLight.Brightness = 2.6
+				faceLight.Range = 18
+			end
+		end
+		return
+	end
+
+	local screenPoint, onScreen = camera:WorldToViewportPoint(wardenRoot.Position + Vector3.new(0, 4, 0))
+	local visible = onScreen and screenPoint.Z > 0
+	local span = math.max(1, awarenessRange - criticalRange)
+	local proximity = 1 - math.clamp((distance - criticalRange) / span, 0, 1)
+	local visibilityFactor = visible and 1 or 0.5
+	local strength = math.clamp(proximity * visibilityFactor, 0, 1)
+	local pulse = 0.5 + 0.5 * math.sin(now * (2.4 + strength * 4.2))
+
+	wardenPressure.BackgroundTransparency = math.clamp(
+		1 - (0.035 + strength * 0.11 + pulse * strength * 0.035),
+		0.82,
+		1
+	)
+
+	if faceSlit then
+		local faceLight = faceSlit:FindFirstChildOfClass("PointLight")
+		if faceLight then
+			faceLight.Brightness = 2.6 + (visible and strength * 5.2 or strength * 2.0)
+			faceLight.Range = 18 + strength * 12
+		end
+	end
+
+	if visible
+		and not wardenSeenThisRun
+		and distance <= math.min(awarenessRange, 130)
+	then
+		wardenSeenThisRun = true
+		showToast("何かがこちらを見ている")
+	end
+end
+
 local function getNavigationTarget(rootPosition)
 	if player:GetAttribute("GateOpen") then
 		return Config.ExitPosition, "BLACK GATE"
@@ -748,8 +834,10 @@ local function updateNavigation()
 
 	if wardenRoot and (player:GetAttribute("SealsBroken") or 0) > 0 then
 		local wardenDistance = (wardenRoot.Position - root.Position).Magnitude
+		local wardenArrow = directionArrow(root.Position, wardenRoot.Position)
 		if wardenDistance <= 25 then
-			text = string.format("⚠ WARDEN %dm   |   %s %s %dm",
+			text = string.format("⚠ WARDEN %s %dm   |   %s %s %dm",
+				wardenArrow,
 				math.floor(wardenDistance + 0.5),
 				targetName,
 				arrow,
@@ -757,7 +845,8 @@ local function updateNavigation()
 			)
 			navLabel.TextColor3 = Color3.fromRGB(255, 74, 48)
 		elseif wardenDistance <= 65 then
-			text = string.format("⚠ WARDEN %dm   |   %s %s %dm",
+			text = string.format("⚠ WARDEN %s %dm   |   %s %s %dm",
+				wardenArrow,
 				math.floor(wardenDistance + 0.5),
 				targetName,
 				arrow,
@@ -829,6 +918,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 		escapeShown = false
 		respawnSafeUntil = 0
 		currentEscalationStage = -1
+		wardenSeenThisRun = false
+		wardenPressure.BackgroundTransparency = 1
 		applyEscalationStage(0, false)
 		timerLabel.Text = "準備中"
 		timerLabel.TextColor3 = Color3.fromRGB(196, 208, 220)
@@ -865,6 +956,9 @@ player.CharacterAdded:Connect(function()
 end)
 
 RunService.RenderStepped:Connect(function()
+	local now = os.clock()
+	updateWardenFear(now)
+
 	local deadline = player:GetAttribute("RunDeadline")
 	if deadline then
 		local remaining = deadline - workspace:GetServerTimeNow()
@@ -882,7 +976,6 @@ RunService.RenderStepped:Connect(function()
 		timerLabel.TextColor3 = Color3.fromRGB(196, 208, 220)
 	end
 
-	local now = os.clock()
 	if now - lastGuideUpdate >= 0.12 then
 		lastGuideUpdate = now
 		updateNavigation()
