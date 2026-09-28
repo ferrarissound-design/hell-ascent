@@ -857,7 +857,7 @@ local function refreshRunStatus()
 	if gateMarker then
 		gateMarker.billboard.Enabled = gateOpen and not runFinished
 	end
-	applyGateVisualState(gateOpen)
+	applyGateVisualState(gateOpen and not runFinished)
 end
 
 local function directionArrow(fromPosition, targetPosition)
@@ -1237,7 +1237,13 @@ event.OnClientEvent:Connect(function(kind, payload)
 	end
 end)
 
-for _, attributeName in ipairs({"SealsBroken", "TotalSeals", "GateOpen"}) do
+for _, attributeName in ipairs({
+	"SealsBroken",
+	"TotalSeals",
+	"GateOpen",
+	"RunExpired",
+	"LayerOneEscaped",
+}) do
 	player:GetAttributeChangedSignal(attributeName):Connect(refreshRunStatus)
 end
 
