@@ -14,7 +14,7 @@ Config.GateRepelPosition = Vector3.new(0, 8, -322)
 
 Config.AshRift = {
 	Position = Vector3.new(62, 8, -88),
-	Destination = Vector3.new(0, 8, -214),
+	Destination = Vector3.new(0, 8, -180),
 	HealthCost = 25,
 	MinimumSeals = 2,
 	ArrivalGraceSeconds = 1.25,
