@@ -1,8 +1,9 @@
 local Assets = {}
 
--- Creator Store MeshPart assets selected for Layer One.
--- Every asset is optional. If Roblox refuses to load one, the generated
--- primitive scenery remains in place and the game stays playable.
+-- Creator Store assets selected for Layer One.
+-- They are loaded through AssetService:LoadAssetAsync(), sanitized, anchored,
+-- and stripped of all Lua source containers before being placed.
+-- Every asset is optional; generated scenery remains if a load fails.
 Assets.DeadTree = {
 	id = 591112009,
 	name = "CreatorDeadTree",
