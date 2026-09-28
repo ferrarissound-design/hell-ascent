@@ -31,27 +31,28 @@ end
 local checkpoints = {}
 
 local function setLighting()
-	Lighting.Brightness = 1.2
-	Lighting.ClockTime = 0.4
-	Lighting.Ambient = Color3.fromRGB(38, 13, 13)
-	Lighting.OutdoorAmbient = Color3.fromRGB(60, 20, 20)
-	Lighting.FogColor = Color3.fromRGB(72, 18, 12)
-	Lighting.FogStart = 35
-	Lighting.FogEnd = 420
-	Lighting.EnvironmentDiffuseScale = 0.35
-	Lighting.EnvironmentSpecularScale = 0.15
+	-- Keep Layer One oppressive, but never so dark that the player loses the route.
+	Lighting.Brightness = 2.4
+	Lighting.ClockTime = 18.2
+	Lighting.Ambient = Color3.fromRGB(92, 38, 34)
+	Lighting.OutdoorAmbient = Color3.fromRGB(112, 48, 40)
+	Lighting.FogColor = Color3.fromRGB(110, 37, 27)
+	Lighting.FogStart = 90
+	Lighting.FogEnd = 620
+	Lighting.EnvironmentDiffuseScale = 0.7
+	Lighting.EnvironmentSpecularScale = 0.25
 
 	local atmosphere = Lighting:FindFirstChildOfClass("Atmosphere")
 	if not atmosphere then
 		atmosphere = Instance.new("Atmosphere")
 		atmosphere.Parent = Lighting
 	end
-	atmosphere.Density = 0.52
-	atmosphere.Offset = -0.1
-	atmosphere.Color = Color3.fromRGB(92, 44, 36)
-	atmosphere.Decay = Color3.fromRGB(20, 5, 3)
-	atmosphere.Glare = 0.05
-	atmosphere.Haze = 2.4
+	atmosphere.Density = 0.28
+	atmosphere.Offset = 0
+	atmosphere.Color = Color3.fromRGB(156, 83, 62)
+	atmosphere.Decay = Color3.fromRGB(70, 18, 12)
+	atmosphere.Glare = 0.08
+	atmosphere.Haze = 1.35
 
 	local correction = Lighting:FindFirstChild("HellColor")
 	if not correction then
@@ -59,10 +60,10 @@ local function setLighting()
 		correction.Name = "HellColor"
 		correction.Parent = Lighting
 	end
-	correction.Brightness = -0.08
-	correction.Contrast = 0.22
-	correction.Saturation = -0.28
-	correction.TintColor = Color3.fromRGB(255, 188, 165)
+	correction.Brightness = 0.04
+	correction.Contrast = 0.12
+	correction.Saturation = -0.12
+	correction.TintColor = Color3.fromRGB(255, 205, 185)
 end
 
 local function makePart(name, size, cframe, color, material, parent)
@@ -188,6 +189,23 @@ end
 
 local function buildWorld()
 	setLighting()
+
+	local emberSun = makePart(
+		"EmberSun",
+		Vector3.new(34, 34, 34),
+		CFrame.new(150, 165, -130),
+		Color3.fromRGB(255, 84, 28),
+		Enum.Material.Neon
+	)
+	emberSun.Shape = Enum.PartType.Ball
+	emberSun.CanCollide = false
+
+	local emberLight = Instance.new("PointLight")
+	emberLight.Color = Color3.fromRGB(255, 103, 54)
+	emberLight.Brightness = 5
+	emberLight.Range = 260
+	emberLight.Shadows = true
+	emberLight.Parent = emberSun
 
 	local lava = makePart(
 		"LakeOfAsh",
@@ -372,6 +390,26 @@ local function buildWorld()
 	label.Font = Enum.Font.GothamBlack
 	label.TextScaled = true
 	label.Parent = billboard
+
+	for _, z in ipairs({145, 50, -45, -145, -245, -325}) do
+		local guide = makePart(
+			"RouteEmber",
+			Vector3.new(3, 3, 3),
+			CFrame.new(0, 10, z),
+			Color3.fromRGB(255, 72, 24),
+			Enum.Material.Neon
+		)
+		guide.Shape = Enum.PartType.Ball
+		guide.CanCollide = false
+
+		local guideLight = Instance.new("PointLight")
+		guideLight.Color = Color3.fromRGB(255, 94, 43)
+		guideLight.Brightness = 2.6
+		guideLight.Range = 38
+		guideLight.Parent = guide
+	end
+
+	print("[HELL ASCENT] Layer One world generated successfully")
 end
 
 local function moveCharacterToCheckpoint(player, character)
