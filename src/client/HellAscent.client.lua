@@ -939,18 +939,10 @@ local function updateWardenFear(now)
 	local distance = (wardenRoot.Position - playerRoot.Position).Magnitude
 	local awarenessRange = Config.Warden.FearAwarenessRange or 150
 	local criticalRange = Config.Warden.FearCriticalRange or 28
+	local observationRange = 0
 
-	if distance >= awarenessRange then
-		reportWardenObserved(false, now, broken)
-		wardenPressure.BackgroundTransparency = 1
-		if faceSlit then
-			local faceLight = faceSlit:FindFirstChildOfClass("PointLight")
-			if faceLight then
-				faceLight.Brightness = 2.6
-				faceLight.Range = 18
-			end
-		end
-		return
+	if broken >= 1 and broken <= 2 then
+		observationRange = Config.Warden.Stages[broken].DetectionRange or awarenessRange
 	end
 
 	local targetPoint = wardenRoot.Position + Vector3.new(0, 4, 0)
@@ -971,9 +963,23 @@ local function updateWardenFear(now)
 		end
 	end
 
-	local observationStage = math.clamp(broken, 1, 2)
-	local observationRange = Config.Warden.Stages[observationStage].DetectionRange or awarenessRange
-	reportWardenObserved(visible and distance <= observationRange, now, broken)
+	reportWardenObserved(
+		visible and observationRange > 0 and distance <= observationRange,
+		now,
+		broken
+	)
+
+	if distance >= awarenessRange then
+		wardenPressure.BackgroundTransparency = 1
+		if faceSlit then
+			local faceLight = faceSlit:FindFirstChildOfClass("PointLight")
+			if faceLight then
+				faceLight.Brightness = 2.6
+				faceLight.Range = 18
+			end
+		end
+		return
+	end
 
 	local span = math.max(1, awarenessRange - criticalRange)
 	local proximity = 1 - math.clamp((distance - criticalRange) / span, 0, 1)
