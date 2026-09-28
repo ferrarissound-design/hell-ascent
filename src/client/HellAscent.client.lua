@@ -553,7 +553,13 @@ end
 
 event.OnClientEvent:Connect(function(kind, payload)
 	if kind == "checkpoint" then
-		showToast("復活地点: " .. string.upper(payload))
+		local checkpointName = payload.name or "SOUL ANCHOR"
+		showToast(string.format(
+			"復活地点を更新: %s  [%d/%d]  /  HP回復",
+			string.upper(checkpointName),
+			payload.index or 0,
+			payload.total or #Config.Checkpoints
+		))
 	elseif kind == "sealBroken" then
 		if payload.id then
 			brokenSeals[payload.id] = true
