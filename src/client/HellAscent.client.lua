@@ -1071,7 +1071,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 	if kind == "checkpoint" then
 		local checkpointName = payload.name or "SOUL ANCHOR"
 		showToast(string.format(
-			"復活地点を更新: %s  [%d/%d]  /  HP回復",
+			"復活地点を更新: %s  [%d/%d]  /  HP・スタミナ回復",
 			string.upper(checkpointName),
 			payload.index or 0,
 			payload.total or #Config.Checkpoints
@@ -1122,7 +1122,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "gateLocked" then
 		showToast(string.format("封印が足りない  %d / %d", payload.count, payload.total))
 	elseif kind == "deathPenalty" then
-		showToast(string.format("死亡: -%d秒  /  復活後%d秒は追跡されない", payload.seconds, Config.RespawnGraceSeconds))
+		showToast(string.format("死亡: -%d秒  /  スタミナ回復  /  %d秒安全", payload.seconds, Config.RespawnGraceSeconds))
 	elseif kind == "expired" then
 		showToast("魂が尽きた。最初から再挑戦")
 	elseif kind == "runStart" then
