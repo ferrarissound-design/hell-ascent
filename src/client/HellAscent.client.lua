@@ -33,6 +33,8 @@ local wardenSeenThisRun = false
 local lastWardenObservedReport = 0
 local lastWardenObservedState = false
 local finalRunActive = false
+local tutorialShown = false
+local tutorialRunToken = 0
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
@@ -693,6 +695,18 @@ local function resetSealVisuals()
 	end
 end
 
+local function rebuildBrokenSealsFromAttributes()
+	brokenSeals = {}
+
+	for _, sealInfo in ipairs(Config.Seals) do
+		local isBroken = player:GetAttribute("Seal_" .. sealInfo.id) == true
+		if isBroken then
+			brokenSeals[sealInfo.id] = true
+		end
+		applySealVisualState(sealInfo.id, isBroken)
+	end
+end
+
 for _, sealInfo in ipairs(Config.Seals) do
 	local anchor = Instance.new("Part")
 	anchor.Name = "Guide_" .. sealInfo.id
@@ -782,7 +796,7 @@ do
 	}
 end
 
-resetSealVisuals()
+rebuildBrokenSealsFromAttributes()
 
 local function refreshRunStatus()
 	local broken = player:GetAttribute("SealsBroken") or 0
@@ -1002,7 +1016,7 @@ local function updateNavigation()
 	local targetPosition, targetName = getNavigationTarget(root.Position)
 	local distance = (targetPosition - root.Position).Magnitude
 	local arrow = directionArrow(root.Position, targetPosition)
-	local text = string.format("%s  %s  %dm", targetName, arrow, math.floor(distance + 0.5))
+	local text = string.format("%s  %s  %d", targetName, arrow, math.floor(distance + 0.5))
 
 	local warden = hellWorld and hellWorld:FindFirstChild("TheWarden")
 	local wardenRoot = warden and warden:FindFirstChild("HumanoidRootPart")
@@ -1016,14 +1030,14 @@ local function updateNavigation()
 			local wardenDistance = (wardenRoot.Position - root.Position).Magnitude
 			local wardenArrow = directionArrow(root.Position, wardenRoot.Position)
 			wardenText = string.format(
-				"WARDEN %s %dm",
+				"WARDEN %s %d",
 				wardenArrow,
 				math.floor(wardenDistance + 0.5)
 			)
 		end
 
 		finalRunLabel.Text = string.format(
-			"FINAL RUN\nBLACK GATE %s %dm   |   %s",
+			"FINAL RUN\nBLACK GATE %s %d   |   %s",
 			gateArrow,
 			math.floor(gateDistance + 0.5),
 			wardenText
@@ -1034,7 +1048,7 @@ local function updateNavigation()
 		local wardenDistance = (wardenRoot.Position - root.Position).Magnitude
 		local wardenArrow = directionArrow(root.Position, wardenRoot.Position)
 		if wardenDistance <= 25 then
-			text = string.format("⚠ WARDEN %s %dm   |   %s %s %dm",
+			text = string.format("⚠ WARDEN %s %d   |   %s %s %d",
 				wardenArrow,
 				math.floor(wardenDistance + 0.5),
 				targetName,
@@ -1043,7 +1057,7 @@ local function updateNavigation()
 			)
 			navLabel.TextColor3 = Color3.fromRGB(255, 74, 48)
 		elseif wardenDistance <= 65 then
-			text = string.format("⚠ WARDEN %s %dm   |   %s %s %dm",
+			text = string.format("⚠ WARDEN %s %d   |   %s %s %d",
 				wardenArrow,
 				math.floor(wardenDistance + 0.5),
 				targetName,
@@ -1069,7 +1083,7 @@ local function updateNavigation()
 	for id, marker in pairs(guideMarkers) do
 		if marker.billboard.Enabled then
 			local markerDistance = (marker.info.position - root.Position).Magnitude
-			marker.label.Text = string.format("◆ 封印  %dm", math.floor(markerDistance + 0.5))
+			marker.label.Text = string.format("◆ 封印  %d", math.floor(markerDistance + 0.5))
 		end
 	end
 end
@@ -1104,6 +1118,9 @@ event.OnClientEvent:Connect(function(kind, payload)
 		showToast("WARDENの攻撃を受けた")
 	elseif kind == "sprintExhausted" then
 		showToast("息が切れた。スタミナを回復しろ")
+	elseif kind == "voidRescue" then
+		setSprintRequested(false)
+		showToast("地形外からSOUL ANCHORへ救済  /  HP・スタミナ回復")
 	elseif kind == "ashRiftUsed" then
 		flashDamage()
 		showToast(string.format("ASH RIFT使用  /  HP -%d  /  前方へ転移", payload.cost or Config.AshRift.HealthCost))
@@ -1137,6 +1154,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "runStart" then
 		setSprintRequested(false)
 		setSprintControlVisible(true)
+		tutorialRunToken += 1
 		brokenSeals = {}
 		escapeShown = false
 		finalRunActive = false
@@ -1160,6 +1178,29 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "runClockStarted" then
 		timerLabel.Text = "残り  " .. formatTime(payload.duration or Config.RunDurationSeconds)
 		timerLabel.TextColor3 = Color3.fromRGB(222, 174, 145)
+
+		if not tutorialShown then
+			tutorialShown = true
+			local token = tutorialRunToken
+
+			task.delay(1.8, function()
+				if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
+					showToast("目的: 3つの封印を壊して BLACK GATEへ")
+				end
+			end)
+
+			task.delay(4.2, function()
+				if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
+					showToast("走る: Shift / 画面の「走る」 / L3")
+				end
+			end)
+
+			task.delay(6.6, function()
+				if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
+					showToast(string.format("死亡すると残り時間 -%d秒", Config.DeathPenaltySeconds))
+				end
+			end)
+		end
 	elseif kind == "escaped" then
 		setSprintRequested(false)
 		setSprintControlVisible(false)
@@ -1172,6 +1213,14 @@ for _, attributeName in ipairs({"SealsBroken", "TotalSeals", "GateOpen"}) do
 	player:GetAttributeChangedSignal(attributeName):Connect(refreshRunStatus)
 end
 
+for _, sealInfo in ipairs(Config.Seals) do
+	player:GetAttributeChangedSignal("Seal_" .. sealInfo.id):Connect(function()
+		rebuildBrokenSealsFromAttributes()
+		refreshRunStatus()
+	end)
+end
+
+rebuildBrokenSealsFromAttributes()
 refreshRunStatus()
 
 player.CharacterAdded:Connect(function()
