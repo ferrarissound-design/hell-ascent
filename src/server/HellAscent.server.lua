@@ -149,6 +149,18 @@ local function expireRun(player, state)
 	state.expired = true
 	state.sprintRequested = false
 	state.sprintActive = false
+
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	local root = character and character:FindFirstChild("HumanoidRootPart")
+	if humanoid and humanoid.Health > 0 then
+		humanoid.WalkSpeed = 0
+	end
+	if root then
+		root.AssemblyLinearVelocity = Vector3.zero
+		root.AssemblyAngularVelocity = Vector3.zero
+	end
+
 	player:SetAttribute("SprintActive", false)
 	player:SetAttribute("RunExpired", true)
 	event:FireClient(player, "expired")
@@ -1643,6 +1655,21 @@ local function buildWorld()
 		end
 
 		state.escaped = true
+		state.sprintRequested = false
+		state.sprintActive = false
+
+		local character = player.Character
+		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+		local root = character and character:FindFirstChild("HumanoidRootPart")
+		if humanoid and humanoid.Health > 0 then
+			humanoid.WalkSpeed = 0
+		end
+		if root then
+			root.AssemblyLinearVelocity = Vector3.zero
+			root.AssemblyAngularVelocity = Vector3.zero
+		end
+
+		player:SetAttribute("SprintActive", false)
 		player:SetAttribute("LayerOneEscaped", true)
 
 		local remaining = state.deadline and math.max(0, math.ceil(state.deadline - serverNow())) or 0
@@ -2021,7 +2048,9 @@ task.spawn(function()
 					end
 
 					if alive then
-						humanoid.WalkSpeed = Config.Sprint.NormalWalkSpeed
+						humanoid.WalkSpeed = runActive
+							and Config.Sprint.NormalWalkSpeed
+							or 0
 					end
 
 					if runActive
