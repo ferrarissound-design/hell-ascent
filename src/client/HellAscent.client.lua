@@ -12,6 +12,8 @@ local brokenSeals = {}
 local guideMarkers = {}
 local lastGuideUpdate = 0
 local escapeShown = false
+local respawnSafeUntil = 0
+local gateMarker = nil
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
@@ -226,6 +228,35 @@ guideFolder = Instance.new("Folder")
 guideFolder.Name = "HellAscentLocalGuides"
 guideFolder.Parent = workspace
 
+local hellWorld = workspace:WaitForChild("HellAscentWorld")
+
+local function applySealVisualState(sealId, isBroken)
+	local sealModel = hellWorld:FindFirstChild("SoulSeal_" .. sealId)
+	if not sealModel then
+		return
+	end
+
+	for _, descendant in ipairs(sealModel:GetDescendants()) do
+		if descendant:IsA("ProximityPrompt") then
+			descendant.Enabled = not isBroken
+		elseif descendant:IsA("PointLight") then
+			descendant.Enabled = not isBroken
+		elseif descendant:IsA("BasePart") then
+			if isBroken then
+				descendant.LocalTransparencyModifier = (descendant.Name == "Pedestal") and 0.18 or 0.68
+			else
+				descendant.LocalTransparencyModifier = 0
+			end
+		end
+	end
+end
+
+local function resetSealVisuals()
+	for _, sealInfo in ipairs(Config.Seals) do
+		applySealVisualState(sealInfo.id, false)
+	end
+end
+
 for _, sealInfo in ipairs(Config.Seals) do
 	local anchor = Instance.new("Part")
 	anchor.Name = "Guide_" .. sealInfo.id
@@ -271,6 +302,52 @@ for _, sealInfo in ipairs(Config.Seals) do
 	}
 end
 
+do
+	local gateAnchor = Instance.new("Part")
+	gateAnchor.Name = "Guide_BLACK_GATE"
+	gateAnchor.Size = Vector3.new(0.2, 0.2, 0.2)
+	gateAnchor.Position = Config.ExitPosition + Vector3.new(0, 15, 0)
+	gateAnchor.Anchored = true
+	gateAnchor.CanCollide = false
+	gateAnchor.CanTouch = false
+	gateAnchor.CanQuery = false
+	gateAnchor.Transparency = 1
+	gateAnchor.Parent = guideFolder
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "GateMarker"
+	billboard.Adornee = gateAnchor
+	billboard.Size = UDim2.fromOffset(180, 44)
+	billboard.AlwaysOnTop = true
+	billboard.MaxDistance = 360
+	billboard.Enabled = false
+	billboard.Parent = gateAnchor
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundColor3 = Color3.fromRGB(17, 12, 13)
+	label.BackgroundTransparency = 0.18
+	label.BorderSizePixel = 0
+	label.Text = "◆ BLACK GATE"
+	label.TextColor3 = Color3.fromRGB(255, 112, 62)
+	label.TextStrokeTransparency = 0.55
+	label.Font = Enum.Font.GothamBlack
+	label.TextSize = 15
+	label.Parent = billboard
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 8)
+	corner.Parent = label
+
+	gateMarker = {
+		anchor = gateAnchor,
+		billboard = billboard,
+		label = label,
+	}
+end
+
+resetSealVisuals()
+
 local function refreshRunStatus()
 	local broken = player:GetAttribute("SealsBroken") or 0
 	local total = player:GetAttribute("TotalSeals") or #Config.Seals
@@ -284,6 +361,10 @@ local function refreshRunStatus()
 
 	for id, marker in pairs(guideMarkers) do
 		marker.billboard.Enabled = not player:GetAttribute("GateOpen") and not brokenSeals[id]
+	end
+
+	if gateMarker then
+		gateMarker.billboard.Enabled = player:GetAttribute("GateOpen") == true
 	end
 end
 
@@ -361,20 +442,38 @@ local function updateNavigation()
 	local arrow = directionArrow(root.Position, targetPosition)
 	local text = string.format("%s  %s  %dm", targetName, arrow, math.floor(distance + 0.5))
 
-	local world = workspace:FindFirstChild("HellAscentWorld")
-	local warden = world and world:FindFirstChild("TheWarden")
+	local warden = hellWorld and hellWorld:FindFirstChild("TheWarden")
 	local wardenRoot = warden and warden:FindFirstChild("HumanoidRootPart")
 
 	if wardenRoot and (player:GetAttribute("SealsBroken") or 0) > 0 then
 		local wardenDistance = (wardenRoot.Position - root.Position).Magnitude
-		if wardenDistance <= 65 then
+		if wardenDistance <= 25 then
 			text = string.format("⚠ WARDEN %dm   |   %s %s %dm",
 				math.floor(wardenDistance + 0.5),
 				targetName,
 				arrow,
 				math.floor(distance + 0.5)
 			)
+			navLabel.TextColor3 = Color3.fromRGB(255, 74, 48)
+		elseif wardenDistance <= 65 then
+			text = string.format("⚠ WARDEN %dm   |   %s %s %dm",
+				math.floor(wardenDistance + 0.5),
+				targetName,
+				arrow,
+				math.floor(distance + 0.5)
+			)
+			navLabel.TextColor3 = Color3.fromRGB(244, 136, 78)
+		else
+			navLabel.TextColor3 = Color3.fromRGB(232, 118, 81)
 		end
+	else
+		navLabel.TextColor3 = Color3.fromRGB(232, 118, 81)
+	end
+
+	local safeRemaining = respawnSafeUntil - os.clock()
+	if safeRemaining > 0 then
+		text = string.format("復活保護 %d秒   |   %s", math.ceil(safeRemaining), text)
+		navLabel.TextColor3 = Color3.fromRGB(196, 208, 220)
 	end
 
 	navLabel.Text = text
@@ -393,6 +492,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "sealBroken" then
 		if payload.id then
 			brokenSeals[payload.id] = true
+			applySealVisualState(payload.id, true)
 		end
 		showToast(string.format("封印を破壊  %d / %d", payload.count, payload.total))
 		refreshRunStatus()
@@ -419,6 +519,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "runStart" then
 		brokenSeals = {}
 		escapeShown = false
+		respawnSafeUntil = 0
+		resetSealVisuals()
 		refreshRunStatus()
 	elseif kind == "escaped" then
 		showEscape()
@@ -430,6 +532,17 @@ for _, attributeName in ipairs({"SealsBroken", "TotalSeals", "GateOpen"}) do
 end
 
 refreshRunStatus()
+
+player.CharacterAdded:Connect(function()
+	if (player:GetAttribute("DeathsThisRun") or 0) > 0 then
+		respawnSafeUntil = os.clock() + Config.RespawnGraceSeconds
+		task.delay(0.45, function()
+			if respawnSafeUntil > os.clock() then
+				showToast(string.format("復活保護: %d秒", Config.RespawnGraceSeconds))
+			end
+		end)
+	end
+end)
 
 RunService.RenderStepped:Connect(function()
 	local deadline = player:GetAttribute("RunDeadline")
