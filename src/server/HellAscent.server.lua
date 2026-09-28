@@ -83,6 +83,10 @@ local function beginRun(player)
 		deaths = 0,
 		checkpointIndex = 0,
 		shortcutUsed = false,
+		sprintRequested = false,
+		sprintActive = false,
+		sprintStamina = Config.Sprint.MaxStamina,
+		lastSprintStop = serverNow(),
 		escaped = false,
 		expired = false,
 		wardenGraceUntil = math.huge,
@@ -101,6 +105,8 @@ local function beginRun(player)
 	player:SetAttribute("LayerOneEscaped", false)
 	player:SetAttribute("DeathsThisRun", 0)
 	player:SetAttribute("AshRiftUsed", false)
+	player:SetAttribute("SprintStamina", Config.Sprint.MaxStamina)
+	player:SetAttribute("SprintActive", false)
 
 	resetWardenHomeIfSafe(player)
 
@@ -1544,6 +1550,7 @@ local function bindCharacter(player, character)
 		return
 	end
 
+	humanoid.WalkSpeed = Config.Sprint.NormalWalkSpeed
 	startRunClock(player)
 
 	local boundState = runStates[player.UserId]
@@ -1559,6 +1566,11 @@ local function bindCharacter(player, character)
 		if not boundState or boundState.expired or boundState.escaped then
 			return
 		end
+
+		boundState.sprintRequested = false
+		boundState.sprintActive = false
+		boundState.lastSprintStop = serverNow()
+		player:SetAttribute("SprintActive", false)
 
 		boundState.deaths += 1
 		if boundState.deadline then
@@ -1603,6 +1615,25 @@ buildWorld()
 runWardenAI()
 
 event.OnServerEvent:Connect(function(player, kind, payload)
+	if kind == "sprintState" then
+		local state = runStates[player.UserId]
+		if not state or not state.started or state.expired or state.escaped then
+			return
+		end
+
+		local wantsSprint = payload == true
+		if wantsSprint and state.sprintStamina < Config.Sprint.MinimumStartStamina then
+			state.sprintRequested = false
+			return
+		end
+
+		state.sprintRequested = wantsSprint
+		if not wantsSprint then
+			state.lastSprintStop = serverNow()
+		end
+		return
+	end
+
 	if kind == "wardenObserved" then
 		local state = runStates[player.UserId]
 		if not state
@@ -1676,6 +1707,68 @@ task.spawn(function()
 					beginRun(player)
 					player:LoadCharacter()
 				end)
+			end
+		end
+	end
+end)
+
+task.spawn(function()
+	local interval = Config.Sprint.UpdateInterval or 0.10
+
+	while true do
+		task.wait(interval)
+		local now = serverNow()
+
+		for _, player in ipairs(Players:GetPlayers()) do
+			local state = runStates[player.UserId]
+			local character = player.Character
+			local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+
+			if state and humanoid then
+				local alive = humanoid.Health > 0
+				local runActive = state.started and not state.expired and not state.escaped
+				local shouldSprint = runActive
+					and alive
+					and state.sprintRequested
+					and state.sprintStamina > 0
+
+				if shouldSprint then
+					state.sprintActive = true
+					state.sprintStamina = math.max(
+						0,
+						state.sprintStamina - Config.Sprint.DrainPerSecond * interval
+					)
+					humanoid.WalkSpeed = Config.Sprint.SprintWalkSpeed
+
+					if state.sprintStamina <= 0 then
+						state.sprintRequested = false
+						state.sprintActive = false
+						state.lastSprintStop = now
+						humanoid.WalkSpeed = Config.Sprint.NormalWalkSpeed
+						event:FireClient(player, "sprintExhausted")
+					end
+				else
+					if state.sprintActive then
+						state.sprintActive = false
+						state.lastSprintStop = now
+					end
+
+					if alive then
+						humanoid.WalkSpeed = Config.Sprint.NormalWalkSpeed
+					end
+
+					if runActive
+						and now - (state.lastSprintStop or 0) >= Config.Sprint.RegenDelaySeconds
+					then
+						state.sprintStamina = math.min(
+							Config.Sprint.MaxStamina,
+							state.sprintStamina + Config.Sprint.RegenPerSecond * interval
+						)
+					end
+				end
+
+				player:SetAttribute("SprintStamina", math.floor(state.sprintStamina + 0.5))
+				player:SetAttribute("SprintActive", state.sprintActive == true)
 			end
 		end
 	end
