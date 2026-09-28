@@ -20,6 +20,17 @@ Config.AshRift = {
 	ArrivalGraceSeconds = 1.25,
 }
 
+Config.Sprint = {
+	NormalWalkSpeed = 16,
+	SprintWalkSpeed = 22,
+	MaxStamina = 100,
+	DrainPerSecond = 27,
+	RegenPerSecond = 19,
+	RegenDelaySeconds = 1.05,
+	MinimumStartStamina = 12,
+	UpdateInterval = 0.10,
+}
+
 Config.Warden = {
 	SpawnPosition = Vector3.new(0, 8, -286),
 	Damage = 34,
