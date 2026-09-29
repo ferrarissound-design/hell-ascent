@@ -273,11 +273,7 @@ local function repairPlayerProgress(player, state)
 end
 
 local function rescuePlayerFromVoid(player, state)
-	if not state
-		or not state.started
-		or state.expired
-		or state.escaped
-	then
+	if not ensureRunStillActive(player, state) then
 		return
 	end
 
@@ -591,7 +587,7 @@ local function makeCheckpoint(info, checkpointIndex)
 		end
 
 		local state = runStates[player.UserId]
-		if not state or state.expired or state.escaped then
+		if player.Character ~= humanoid.Parent or not ensureRunStillActive(player, state) then
 			return
 		end
 
@@ -975,8 +971,10 @@ local function getWardenTarget()
 		local humanoid = character and character:FindFirstChildOfClass("Humanoid")
 
 		if state
+			and state.started
 			and not state.expired
 			and not state.escaped
+			and state.deadline and serverNow() < state.deadline
 			and state.sealCount > 0
 			and serverNow() >= (state.wardenGraceUntil or 0)
 			and root
@@ -1023,6 +1021,7 @@ local function isWardenObserved(player)
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = {character}
 	params.IgnoreWater = true
+	params.RespectCanCollide = true
 
 	local origin = originPart.Position
 	local target = wardenModel.PrimaryPart.Position + Vector3.new(0, 4, 0)
@@ -1045,7 +1044,7 @@ local function faceWardenToward(targetPosition)
 	root.CFrame = CFrame.lookAt(root.Position, flatTarget)
 end
 
-local function moveWardenToward(targetPosition, stage, speedOverride)
+local function moveWardenToward(targetPosition, stage, speedOverride, targetStillValid)
 	if not wardenModel then
 		return
 	end
@@ -1059,16 +1058,19 @@ local function moveWardenToward(targetPosition, stage, speedOverride)
 	local stageConfig = Config.Warden.Stages[stage] or Config.Warden.Stages[0]
 	humanoid.WalkSpeed = speedOverride or stageConfig.WalkSpeed
 
-	local path = PathfindingService:CreatePath({
-		AgentRadius = 2.0,
-		AgentHeight = 10,
-		AgentCanJump = true,
-		WaypointSpacing = 5,
-	})
-
+	local path
 	local success = pcall(function()
+		path = PathfindingService:CreatePath({
+			AgentRadius = 2.0,
+			AgentHeight = 10,
+			AgentCanJump = true,
+			WaypointSpacing = 5,
+		})
 		path:ComputeAsync(root.Position, targetPosition)
 	end)
+	if targetStillValid and not targetStillValid() then
+		return
+	end
 
 	if success and path.Status == Enum.PathStatus.Success then
 		local waypoints = path:GetWaypoints()
@@ -1113,6 +1115,7 @@ local function runWardenAI()
 			end
 
 			local character = targetPlayer.Character
+			local targetState = runStates[targetPlayer.UserId]
 			local targetRoot = character and character:FindFirstChild("HumanoidRootPart")
 			local targetHumanoid = character and character:FindFirstChildOfClass("Humanoid")
 			if not targetRoot or not targetHumanoid or targetHumanoid.Health <= 0 then
@@ -1139,16 +1142,32 @@ local function runWardenAI()
 					speedOverride = Config.Warden.StageTwoObservedSpeed
 				end
 
-				moveWardenToward(targetRoot.Position, stage, speedOverride)
+				moveWardenToward(targetRoot.Position, stage, speedOverride, function()
+					return runStates[targetPlayer.UserId] == targetState
+						and targetState.started
+						and not targetState.expired
+						and not targetState.escaped
+						and targetState.deadline and serverNow() < targetState.deadline
+						and targetState.sealCount == stage
+						and serverNow() >= (targetState.wardenGraceUntil or 0)
+						and targetPlayer.Character == character
+						and character:FindFirstChild("HumanoidRootPart") == targetRoot
+						and targetHumanoid.Health > 0
+						and (targetRoot.Position - root.Position).Magnitude
+							<= Config.Warden.Stages[stage].DetectionRange
+				end)
 			end
 
 			local liveState = runStates[targetPlayer.UserId]
 			local liveCharacter = targetPlayer.Character
 			local liveRoot = liveCharacter and liveCharacter:FindFirstChild("HumanoidRootPart")
 			local liveHumanoid = liveCharacter and liveCharacter:FindFirstChildOfClass("Humanoid")
-			local targetStillValid = liveState
+			local targetStillValid = liveState == targetState
+				and liveState.started
 				and not liveState.expired
 				and not liveState.escaped
+				and liveState.deadline and serverNow() < liveState.deadline
+				and liveState.sealCount == stage
 				and serverNow() >= (liveState.wardenGraceUntil or 0)
 				and liveCharacter == character
 				and liveRoot == targetRoot
@@ -1673,8 +1692,11 @@ local function buildWorld()
 
 	local exitCooldown = {}
 	veil.Touched:Connect(function(hit)
-		local player = playerFromHit(hit)
-		if not player or exitCooldown[player] then
+		local player, touchedHumanoid = playerFromHit(hit)
+		if not player or exitCooldown[player] == runStates[player.UserId]
+			or player.Character ~= touchedHumanoid.Parent
+			or touchedHumanoid.Health <= 0
+		then
 			return
 		end
 
@@ -1683,7 +1705,7 @@ local function buildWorld()
 			return
 		end
 
-		exitCooldown[player] = true
+		exitCooldown[player] = state
 
 		if state.sealCount < #Config.Seals then
 			event:FireClient(player, "gateLocked", {
@@ -1704,7 +1726,9 @@ local function buildWorld()
 			end
 
 			task.delay(1.2, function()
-				exitCooldown[player] = nil
+				if exitCooldown[player] == state then
+					exitCooldown[player] = nil
+				end
 			end)
 			return
 		end
@@ -1778,7 +1802,9 @@ local function buildWorld()
 		})
 
 		task.delay(3, function()
-			exitCooldown[player] = nil
+			if exitCooldown[player] == state then
+				exitCooldown[player] = nil
+			end
 		end)
 	end)
 
@@ -1890,11 +1916,14 @@ local function validateReleaseWorld()
 end
 
 local function moveCharacterToCheckpoint(player, character)
+	local boundState = runStates[player.UserId]
 	local target = checkpoints[player.UserId] or CFrame.new(Config.SpawnPosition)
 	local root = character:WaitForChild("HumanoidRootPart", 8)
 	if root then
 		task.wait(0.15)
-		character:PivotTo(target + Vector3.new(0, 3, 0))
+		if player.Character == character and runStates[player.UserId] == boundState then
+			character:PivotTo(target + Vector3.new(0, 3, 0))
+		end
 	end
 end
 
@@ -1903,18 +1932,18 @@ local function bindCharacter(player, character)
 		return
 	end
 	character:SetAttribute("HellAscentServerBound", true)
+	local boundState = runStates[player.UserId]
 
 	moveCharacterToCheckpoint(player, character)
 
 	local humanoid = character:WaitForChild("Humanoid", 8)
-	if not humanoid then
+	if not humanoid or player.Character ~= character or runStates[player.UserId] ~= boundState then
 		return
 	end
 
 	humanoid.WalkSpeed = Config.Sprint.NormalWalkSpeed
 	startRunClock(player)
 
-	local boundState = runStates[player.UserId]
 	if boundState then
 		boundState.wardenGraceUntil = serverNow() + Config.RespawnGraceSeconds
 	end
@@ -1929,6 +1958,13 @@ local function bindCharacter(player, character)
 		end
 
 		if not boundState or boundState.expired or boundState.escaped then
+			return
+		end
+		if boundState.deathHandledCharacter == character then
+			return
+		end
+		boundState.deathHandledCharacter = character
+		if not ensureRunStillActive(player, boundState) then
 			return
 		end
 
@@ -1985,7 +2021,7 @@ runWardenAI()
 event.OnServerEvent:Connect(function(player, kind, payload)
 	if kind == "sprintState" then
 		local state = runStates[player.UserId]
-		if not state or not state.started or state.expired or state.escaped then
+		if not ensureRunStillActive(player, state) then
 			return
 		end
 
@@ -2005,8 +2041,10 @@ event.OnServerEvent:Connect(function(player, kind, payload)
 	if kind == "wardenObserved" then
 		local state = runStates[player.UserId]
 		if not state
+			or not state.started
 			or state.expired
 			or state.escaped
+			or (state.deadline and serverNow() >= state.deadline)
 			or state.sealCount < 1
 			or state.sealCount > 2
 		then
