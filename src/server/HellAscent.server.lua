@@ -321,6 +321,11 @@ local function breakSoulSeal(player, sealInfo)
 	if not ensureRunStillActive(player, state) then
 		return
 	end
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then
+		return
+	end
 
 	if state.seals[sealInfo.id] then
 		event:FireClient(player, "sealAlreadyBroken", sealInfo.name)
