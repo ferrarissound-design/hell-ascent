@@ -845,13 +845,13 @@ local function refreshRunStatus()
 		sealsLabel.TextColor3 = Color3.fromRGB(222, 174, 145)
 	end
 
-	for id, marker in pairs(guideMarkers) do
-		marker.billboard.Enabled = not player:GetAttribute("GateOpen") and not brokenSeals[id]
-	end
-
 	local gateOpen = player:GetAttribute("GateOpen") == true
 	local runFinished = player:GetAttribute("RunExpired") == true
 		or player:GetAttribute("LayerOneEscaped") == true
+	for id, marker in pairs(guideMarkers) do
+		marker.billboard.Enabled = not runFinished and not gateOpen and not brokenSeals[id]
+	end
+	setSprintControlVisible(not runFinished)
 	finalRunActive = gateOpen and not runFinished
 	finalRunPanel.Visible = finalRunActive and not escapeShown
 	if gateMarker then
@@ -926,6 +926,13 @@ local function reportWardenObserved(observed, now, broken)
 end
 
 local function updateWardenFear(now)
+	if player:GetAttribute("RunExpired") == true
+		or player:GetAttribute("LayerOneEscaped") == true
+	then
+		reportWardenObserved(false, now, 0)
+		wardenPressure.BackgroundTransparency = 1
+		return
+	end
 	local character = player.Character
 	local playerRoot = character and character:FindFirstChild("HumanoidRootPart")
 	local camera = workspace.CurrentCamera
@@ -1192,6 +1199,9 @@ event.OnClientEvent:Connect(function(kind, payload)
 	elseif kind == "deathPenalty" then
 		showToast(string.format("死亡: -%d秒  /  スタミナ回復  /  %d秒安全", payload.seconds, Config.RespawnGraceSeconds))
 	elseif kind == "expired" then
+		stageBannerSerial += 1
+		stageBanner.TextTransparency = 1
+		stageBanner.TextStrokeTransparency = 1
 		setSprintRequested(false)
 		setSprintControlVisible(false)
 		finalRunActive = false
@@ -1199,6 +1209,12 @@ event.OnClientEvent:Connect(function(kind, payload)
 		staminaPanel.Visible = false
 		showToast("魂が尽きた。最初から再挑戦")
 	elseif kind == "runStart" then
+		stageBannerSerial += 1
+		stageBanner.TextTransparency = 1
+		stageBanner.TextStrokeTransparency = 1
+		toastSerial += 1
+		toast.TextTransparency = 1
+		toast.BackgroundTransparency = 1
 		setSprintRequested(false)
 		setSprintControlVisible(true)
 		tutorialRunToken += 1
@@ -1228,6 +1244,9 @@ event.OnClientEvent:Connect(function(kind, payload)
 
 		startFirstRunTutorial()
 	elseif kind == "escaped" then
+		stageBannerSerial += 1
+		stageBanner.TextTransparency = 1
+		stageBanner.TextStrokeTransparency = 1
 		setSprintRequested(false)
 		setSprintControlVisible(false)
 		finalRunActive = false
