@@ -6,6 +6,8 @@ local PathfindingService = game:GetService("PathfindingService")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared:WaitForChild("GameConfig"))
+local Persistence = require(script.Parent:WaitForChild("Persistence"))
+local WorldExtras = require(script.Parent:WaitForChild("WorldExtras"))
 
 local world = workspace:FindFirstChild("HellAscentWorld")
 if world then
@@ -38,9 +40,86 @@ local wardenAttackTimes = {}
 local wardenObservations = {}
 local sessionRecords = {}
 local setupPlayers = {}
+local exitCooldowns = {}
 
 local function serverNow()
 	return workspace:GetServerTimeNow()
+end
+
+local function newRecord()
+	return {
+		bests = {},
+		escapes = 0,
+		unlocked = {},
+		selectedDifficulty = Config.DefaultDifficulty,
+		profileLoaded = false,
+	}
+end
+
+local function getRecord(player)
+	local record = sessionRecords[player.UserId]
+	if not record then
+		record = newRecord()
+		sessionRecords[player.UserId] = record
+	end
+	return record
+end
+
+local function isDifficultyAvailable(record, difficultyId)
+	local difficulty = Config.Difficulties[difficultyId]
+	if not difficulty then
+		return false
+	end
+	return not difficulty.requiresUnlock or record.unlocked[difficultyId] == true
+end
+
+local function formatClock(seconds)
+	seconds = math.max(0, math.floor(seconds))
+	return string.format("%02d:%02d", math.floor(seconds / 60), seconds % 60)
+end
+
+local function refreshRecordDisplay(player, record)
+	local difficultyId = record.selectedDifficulty
+	local best = record.bests[difficultyId]
+	player:SetAttribute("SessionBestSeconds", best and best.seconds or nil)
+	player:SetAttribute("SessionEscapes", record.escapes)
+	player:SetAttribute("NightmareUnlocked", record.unlocked.NIGHTMARE == true)
+
+	local stats = player:FindFirstChild("leaderstats")
+	if stats then
+		local escapes = stats:FindFirstChild("Escapes")
+		if escapes then
+			escapes.Value = record.escapes
+		end
+		local bestValue = stats:FindFirstChild("Best")
+		if bestValue then
+			local normalBest = record.bests.NORMAL
+			bestValue.Value = normalBest and formatClock(normalBest.seconds) or "--:--"
+		end
+	end
+end
+
+local pendingSaves = 0
+
+local function saveRecord(player, record)
+	pendingSaves += 1
+	local ok = Persistence.save(player.UserId, {
+		escapes = record.escapes,
+		bests = record.bests,
+		unlocked = record.unlocked,
+	})
+	pendingSaves -= 1
+	return ok
+end
+
+local function computeGrade(clearSeconds, deaths, duration)
+	local ratio = clearSeconds / math.max(1, duration)
+	for _, rank in ipairs(Config.Ranks) do
+		if ratio <= rank.MaxRatio and deaths <= rank.MaxDeaths then
+			return rank.id
+		end
+	end
+	return Config.Ranks[#Config.Ranks].id
 end
 
 local function resetWardenHomeIfSafe(exceptPlayer)
@@ -75,7 +154,14 @@ local function resetWardenHomeIfSafe(exceptPlayer)
 end
 
 local function beginRun(player)
+	local record = getRecord(player)
+	if not isDifficultyAvailable(record, record.selectedDifficulty) then
+		record.selectedDifficulty = Config.DefaultDifficulty
+	end
+	local difficulty = Config.Difficulties[record.selectedDifficulty]
+
 	local state = {
+		difficulty = difficulty,
 		deadline = nil,
 		started = false,
 		seals = {},
@@ -108,14 +194,22 @@ local function beginRun(player)
 	player:SetAttribute("AshRiftUsed", false)
 	player:SetAttribute("SprintStamina", Config.Sprint.MaxStamina)
 	player:SetAttribute("SprintActive", false)
+	player:SetAttribute("Difficulty", difficulty.id)
 	for _, sealInfo in ipairs(Config.Seals) do
 		player:SetAttribute("Seal_" .. sealInfo.id, false)
 	end
+	WorldExtras.resetEmbers(player, state)
+	refreshRecordDisplay(player, record)
 
 	resetWardenHomeIfSafe(player)
 
 	event:FireClient(player, "runStart", {
-		duration = Config.RunDurationSeconds,
+		duration = difficulty.DurationSeconds,
+		difficulty = difficulty.id,
+		difficultyLabel = difficulty.label,
+		deathPenalty = difficulty.DeathPenaltySeconds,
+		emberBonus = difficulty.EmberBonusSeconds,
+		totalEmbers = #Config.SoulEmbers.Positions,
 	})
 end
 
@@ -127,13 +221,13 @@ local function startRunClock(player)
 
 	local now = serverNow()
 	state.started = true
-	state.deadline = now + Config.RunDurationSeconds
+	state.deadline = now + state.difficulty.DurationSeconds
 	state.wardenGraceUntil = now + Config.RespawnGraceSeconds
 
 	player:SetAttribute("RunDeadline", state.deadline)
 	event:FireClient(player, "runClockStarted", {
 		deadline = state.deadline,
-		duration = Config.RunDurationSeconds,
+		duration = state.difficulty.DurationSeconds,
 	})
 end
 
@@ -340,6 +434,7 @@ local function breakSoulSeal(player, sealInfo)
 	event:FireClient(player, "sealBroken", {
 		id = sealInfo.id,
 		name = sealInfo.name,
+		lore = sealInfo.lore,
 		count = state.sealCount,
 		total = #Config.Seals,
 	})
@@ -603,7 +698,10 @@ local function makeCheckpoint(info, checkpointIndex)
 		state.checkpointIndex = checkpointIndex
 		checkpoints[player.UserId] = CFrame.new(info.position)
 
-		humanoid.Health = humanoid.MaxHealth
+		humanoid.Health = math.min(
+			humanoid.MaxHealth,
+			humanoid.Health + humanoid.MaxHealth * state.difficulty.AnchorHealFraction
+		)
 		state.sprintStamina = Config.Sprint.MaxStamina
 		player:SetAttribute("SprintStamina", Config.Sprint.MaxStamina)
 
@@ -1049,7 +1147,7 @@ local function faceWardenToward(targetPosition)
 	root.CFrame = CFrame.lookAt(root.Position, flatTarget)
 end
 
-local function moveWardenToward(targetPosition, stage, speedOverride, targetStillValid)
+local function moveWardenToward(targetPosition, stage, speedOverride, targetStillValid, speedScale)
 	if not wardenModel then
 		return
 	end
@@ -1061,7 +1159,7 @@ local function moveWardenToward(targetPosition, stage, speedOverride, targetStil
 	end
 
 	local stageConfig = Config.Warden.Stages[stage] or Config.Warden.Stages[0]
-	humanoid.WalkSpeed = speedOverride or stageConfig.WalkSpeed
+	humanoid.WalkSpeed = (speedOverride or stageConfig.WalkSpeed) * (speedScale or 1)
 
 	local path
 	local success = pcall(function()
@@ -1160,7 +1258,7 @@ local function runWardenAI()
 						and targetHumanoid.Health > 0
 						and (targetRoot.Position - root.Position).Magnitude
 							<= Config.Warden.Stages[stage].DetectionRange
-				end)
+				end, targetState.difficulty.WardenSpeedScale)
 			end
 
 			local liveState = runStates[targetPlayer.UserId]
@@ -1186,7 +1284,7 @@ local function runWardenAI()
 					local lastAttack = wardenAttackTimes[targetPlayer.UserId] or 0
 					if now - lastAttack >= Config.Warden.AttackCooldown then
 						wardenAttackTimes[targetPlayer.UserId] = now
-						liveHumanoid:TakeDamage(Config.Warden.Damage)
+						liveHumanoid:TakeDamage(Config.Warden.Damage * liveState.difficulty.WardenDamageScale)
 						event:FireClient(targetPlayer, "wardenStrike")
 					end
 				end
@@ -1633,6 +1731,17 @@ local function buildWorld()
 
 	makeAshRift()
 
+	WorldExtras.build({
+		Config = Config,
+		world = world,
+		event = event,
+		runStates = runStates,
+		serverNow = serverNow,
+		ensureRunStillActive = ensureRunStillActive,
+		playerFromHit = playerFromHit,
+		makePart = makePart,
+	})
+
 	local gate = Instance.new("Model")
 	gate.Name = "BlackGate"
 	gate.Parent = world
@@ -1695,10 +1804,9 @@ local function buildWorld()
 
 	veil.CanCollide = false
 
-	local exitCooldown = {}
 	veil.Touched:Connect(function(hit)
 		local player, touchedHumanoid = playerFromHit(hit)
-		if not player or exitCooldown[player] == runStates[player.UserId]
+		if not player or exitCooldowns[player] == runStates[player.UserId]
 			or player.Character ~= touchedHumanoid.Parent
 			or touchedHumanoid.Health <= 0
 		then
@@ -1710,7 +1818,7 @@ local function buildWorld()
 			return
 		end
 
-		exitCooldown[player] = state
+		exitCooldowns[player] = state
 
 		if state.sealCount < #Config.Seals then
 			event:FireClient(player, "gateLocked", {
@@ -1731,8 +1839,8 @@ local function buildWorld()
 			end
 
 			task.delay(1.2, function()
-				if exitCooldown[player] == state then
-					exitCooldown[player] = nil
+				if exitCooldowns[player] == state then
+					exitCooldowns[player] = nil
 				end
 			end)
 			return
@@ -1756,40 +1864,43 @@ local function buildWorld()
 		player:SetAttribute("SprintActive", false)
 		player:SetAttribute("LayerOneEscaped", true)
 
+		local difficulty = state.difficulty
 		local remaining = state.deadline and math.max(0, math.ceil(state.deadline - serverNow())) or 0
-		local clearSeconds = math.max(0, Config.RunDurationSeconds - remaining)
+		local clearSeconds = math.max(0, difficulty.DurationSeconds - remaining)
+		local grade = computeGrade(clearSeconds, state.deaths, difficulty.DurationSeconds)
 
-		local record = sessionRecords[player.UserId]
-		if not record then
-			record = {
-				bestSeconds = nil,
-				bestDeaths = nil,
-				escapes = 0,
-			}
-			sessionRecords[player.UserId] = record
-		end
-
+		local record = getRecord(player)
 		record.escapes += 1
-		local newBest = record.bestSeconds == nil
-			or clearSeconds < record.bestSeconds
-			or (clearSeconds == record.bestSeconds and state.deaths < (record.bestDeaths or math.huge))
 
+		local previousBest = record.bests[difficulty.id]
+		local newBest = previousBest == nil
+			or clearSeconds < previousBest.seconds
+			or (clearSeconds == previousBest.seconds and state.deaths < previousBest.deaths)
 		if newBest then
-			record.bestSeconds = clearSeconds
-			record.bestDeaths = state.deaths
+			record.bests[difficulty.id] = {seconds = clearSeconds, deaths = state.deaths}
+		end
+		local best = record.bests[difficulty.id]
+
+		local newlyUnlocked = false
+		for difficultyId, otherDifficulty in pairs(Config.Difficulties) do
+			if otherDifficulty.requiresUnlock and not record.unlocked[difficultyId] then
+				record.unlocked[difficultyId] = true
+				newlyUnlocked = true
+			end
 		end
 
-		player:SetAttribute("SessionBestSeconds", record.bestSeconds)
-		player:SetAttribute("SessionEscapes", record.escapes)
+		refreshRecordDisplay(player, record)
+		task.spawn(saveRecord, player, record)
 
-		local clearMinutes = math.floor(clearSeconds / 60)
-		local clearRemainder = clearSeconds % 60
 		print(string.format(
-			"[HELL ASCENT][CLEAR] %s | %02d:%02d | deaths=%d | ashRift=%s | escapes=%d | newBest=%s",
+			"[HELL ASCENT][CLEAR] %s | %s | %s | grade=%s | deaths=%d | embers=%d/%d | ashRift=%s | escapes=%d | newBest=%s",
 			player.Name,
-			clearMinutes,
-			clearRemainder,
+			difficulty.id,
+			formatClock(clearSeconds),
+			grade,
 			state.deaths,
+			state.emberCount,
+			#Config.SoulEmbers.Positions,
 			tostring(state.shortcutUsed),
 			record.escapes,
 			tostring(newBest)
@@ -1800,15 +1911,22 @@ local function buildWorld()
 			remaining = remaining,
 			clearSeconds = clearSeconds,
 			deaths = state.deaths,
-			bestSeconds = record.bestSeconds,
-			bestDeaths = record.bestDeaths,
+			bestSeconds = best.seconds,
+			bestDeaths = best.deaths,
 			escapes = record.escapes,
 			newBest = newBest,
+			grade = grade,
+			embers = state.emberCount,
+			totalEmbers = #Config.SoulEmbers.Positions,
+			difficulty = difficulty.id,
+			difficultyLabel = difficulty.label,
+			nightmareUnlocked = record.unlocked.NIGHTMARE == true,
+			newlyUnlocked = newlyUnlocked,
 		})
 
 		task.delay(3, function()
-			if exitCooldown[player] == state then
-				exitCooldown[player] = nil
+			if exitCooldowns[player] == state then
+				exitCooldowns[player] = nil
 			end
 		end)
 	end)
@@ -1910,7 +2028,18 @@ local function validateReleaseWorld()
 		end
 	end
 
-	workspace:SetAttribute("HellAscentBuild", "2026-09-30-RC")
+	for emberIndex = 1, #Config.SoulEmbers.Positions do
+		if not world:FindFirstChild("SoulEmber_" .. emberIndex, true) then
+			table.insert(missing, "SoulEmber_" .. emberIndex)
+		end
+	end
+	for ventIndex = 1, #Config.Vents.Positions do
+		if not world:FindFirstChild("EmberVent_" .. ventIndex, true) then
+			table.insert(missing, "EmberVent_" .. ventIndex)
+		end
+	end
+
+	workspace:SetAttribute("HellAscentBuild", Config.Version)
 	workspace:SetAttribute("HellAscentReady", #missing == 0)
 
 	if #missing == 0 then
@@ -1982,13 +2111,13 @@ local function bindCharacter(player, character)
 
 		boundState.deaths += 1
 		if boundState.deadline then
-			boundState.deadline -= Config.DeathPenaltySeconds
+			boundState.deadline -= boundState.difficulty.DeathPenaltySeconds
 		end
 		player:SetAttribute("DeathsThisRun", boundState.deaths)
 		player:SetAttribute("RunDeadline", boundState.deadline)
 
 		event:FireClient(player, "deathPenalty", {
-			seconds = Config.DeathPenaltySeconds,
+			seconds = boundState.difficulty.DeathPenaltySeconds,
 			deaths = boundState.deaths,
 		})
 	end)
@@ -2000,15 +2129,39 @@ local function setupPlayer(player)
 	end
 	setupPlayers[player] = true
 
-	sessionRecords[player.UserId] = sessionRecords[player.UserId] or {
-		bestSeconds = nil,
-		bestDeaths = nil,
-		escapes = 0,
-	}
-	player:SetAttribute("SessionBestSeconds", nil)
-	player:SetAttribute("SessionEscapes", 0)
+	local record = getRecord(player)
+
+	local leaderstats = Instance.new("Folder")
+	leaderstats.Name = "leaderstats"
+	local escapesValue = Instance.new("IntValue")
+	escapesValue.Name = "Escapes"
+	escapesValue.Parent = leaderstats
+	local bestValue = Instance.new("StringValue")
+	bestValue.Name = "Best"
+	bestValue.Value = "--:--"
+	bestValue.Parent = leaderstats
+	leaderstats.Parent = player
 
 	beginRun(player)
+
+	-- Saved progress is merged in the background; a failed load never blocks play.
+	task.spawn(function()
+		local profile, ok = Persistence.load(player.UserId)
+		if not ok or not player.Parent then
+			return
+		end
+
+		local merged = Persistence.merge(profile, {
+			escapes = record.escapes,
+			bests = record.bests,
+			unlocked = record.unlocked,
+		})
+		record.escapes = merged.escapes
+		record.bests = merged.bests
+		record.unlocked = merged.unlocked
+		record.profileLoaded = true
+		refreshRecordDisplay(player, record)
+	end)
 
 	player.CharacterAdded:Connect(function(character)
 		bindCharacter(player, character)
@@ -2073,6 +2226,11 @@ event.OnServerEvent:Connect(function(player, kind, payload)
 		return
 	end
 
+	local record = getRecord(player)
+	if type(payload) == "string" and isDifficultyAvailable(record, payload) then
+		record.selectedDifficulty = payload
+	end
+
 	beginRun(player)
 	player:LoadCharacter()
 end)
@@ -2080,6 +2238,12 @@ end)
 Players.PlayerAdded:Connect(setupPlayer)
 
 Players.PlayerRemoving:Connect(function(player)
+	local record = sessionRecords[player.UserId]
+	if record and record.escapes > 0 then
+		task.spawn(saveRecord, player, record)
+	end
+
+	exitCooldowns[player] = nil
 	checkpoints[player.UserId] = nil
 	runStates[player.UserId] = nil
 	wardenAttackTimes[player.UserId] = nil
@@ -2194,5 +2358,20 @@ task.spawn(function()
 				player:SetAttribute("SprintActive", state.sprintActive == true)
 			end
 		end
+	end
+end)
+
+game:BindToClose(function()
+	for _, player in ipairs(Players:GetPlayers()) do
+		local record = sessionRecords[player.UserId]
+		if record and record.escapes > 0 then
+			task.spawn(saveRecord, player, record)
+		end
+	end
+
+	local waited = 0
+	while pendingSaves > 0 and waited < 20 do
+		task.wait(0.25)
+		waited += 0.25
 	end
 end)

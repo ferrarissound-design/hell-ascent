@@ -80,6 +80,40 @@ Test all three seals.
 - Player can pass the gate and finish the layer.
 - Escape ending appears only once.
 
+## Soul Embers (v1.0.0)
+
+- 10 pale-blue embers are visible; none sits on a spot the player cannot reach.
+- Touching one: toast `魂火 n / 10  +8秒`, ember disappears for that player only, timer visibly increases.
+- Walking back over a collected ember does nothing.
+- After death, collected embers stay collected; after a restart they all come back.
+- Embers do not give time once the run has expired or the layer is escaped.
+- HUD tag (top-right of the title row) shows `◈ n/10  NORMAL`.
+
+## Ember Vents (v1.0.0)
+
+- Each vent: dim disc -> flickering glow (~1.4s) -> flame column (~0.9s) -> dim again, repeating every ~6s.
+- Standing in the disc during the blast deals 28 damage once per eruption, and bounces the player upward only (never sideways off the edge).
+- Players escaping the blast radius during the warning take no damage.
+- Neighbouring vents are not synchronised, and the centre line of the Causeway is passable.
+- Respawn protection and the ASH RIFT arrival window protect from vents too.
+- A vent never makes the Soul Anchors, Seals or Black Gate unreachable.
+
+## NIGHTMARE, grades and records (v1.0.0)
+
+- First escape shows a grade (S/A/B/C), embers, and `NIGHTMARE 解放`.
+- `NIGHTMARE に挑む` appears only after the first escape; on a fresh account the button is absent.
+- NIGHTMARE: timer starts at 08:00, death costs 30s, tag turns red, Warden is noticeably faster, Soul Anchor heals half HP.
+- Retry keeps the same difficulty; `NORMALに戻る` returns to NORMAL.
+- Player list shows `Escapes` and `Best` (NORMAL best, `--:--` until cleared).
+- Rejoin the server: escapes, best time and the NIGHTMARE unlock are still there (needs published place + API access).
+- With DataStore unavailable (Studio default): a single `[HELL ASCENT][DATA]` warning, game plays normally.
+
+## Feel and audio (v1.0.0)
+
+- Camera shakes briefly on seal break, Warden hit, vent hit and death; it settles back to normal.
+- On a gamepad: rumble on hit, gentle rumble when the Warden is close, none otherwise. Phones/keyboards are unaffected.
+- With sound ids filled in `Config.Audio`: ambience loops from run start, heartbeat speeds up near the Warden and stops when far, one-shots fire once per event. With ids empty: no errors.
+
 ## Mobile check
 
 Use Studio device emulation or a real phone.
@@ -107,10 +141,12 @@ Look specifically for:
 
 Current values live in `src/shared/GameConfig.lua`.
 
-- Run duration: `RunDurationSeconds`
-- Death penalty: `DeathPenaltySeconds`
+- Run duration and death penalty: `Config.Difficulties.NORMAL / NIGHTMARE`
+- Grade thresholds: `Config.Ranks`
+- Ember time bonus: `EmberBonusSeconds` per difficulty
+- Vent rhythm and damage: `Config.Vents`
 - Respawn safety: `RespawnGraceSeconds`
-- Warden damage: `Config.Warden.Damage`
+- Warden damage: `Config.Warden.Damage` (scaled per difficulty by `WardenDamageScale`)
 - Warden attack range/cooldown
 - Warden stage speeds and detection ranges
 

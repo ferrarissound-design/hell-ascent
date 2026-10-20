@@ -1,6 +1,6 @@
 # HELL ASCENT - Roblox Publishing Pack
 
-Use this page when publishing the 2026-09-30 Layer One release candidate.
+Use this page when publishing Layer One. Written for the 2026-09-30 release candidate; v1.0.0 additions (Soul Embers, Ember Vents, NIGHTMARE, saved records) are listed in `RELEASE_NOTES_1.0.0.md`. For saved records, publish the place and turn on API services (see README, "Saved progress").
 
 ## Experience name
 
