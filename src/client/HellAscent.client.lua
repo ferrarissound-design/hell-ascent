@@ -4,6 +4,9 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
 local ContextActionService = game:GetService("ContextActionService")
+local SoundService = game:GetService("SoundService")
+local HapticService = game:GetService("HapticService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -35,6 +38,18 @@ local lastWardenObservedState = false
 local finalRunActive = false
 local tutorialShown = false
 local tutorialRunToken = 0
+local deathPenaltySeconds = Config.DeathPenaltySeconds
+local difficultyId = Config.DefaultDifficulty
+local difficultyLabel = Config.Difficulties[Config.DefaultDifficulty].label
+local totalEmbers = #Config.SoulEmbers.Positions
+local fearStrength = 0
+local shakeStartedAt = 0
+local shakeUntil = 0
+local shakePower = 0
+local isShaking = false
+local rumbleLockUntil = 0
+local lastProximityRumble = 0
+local lastProximityLevel = 0
 
 local gui = Instance.new("ScreenGui")
 gui.Name = "HellAscentUI"
@@ -90,6 +105,36 @@ title.Font = Enum.Font.GothamBold
 title.TextSize = 12
 title.TextXAlignment = Enum.TextXAlignment.Left
 title.Parent = header
+
+local tagLabel = Instance.new("TextLabel")
+tagLabel.AnchorPoint = Vector2.new(1, 0)
+tagLabel.Position = UDim2.new(1, -14, 0, 5)
+tagLabel.Size = UDim2.new(0.5, 0, 0, 18)
+tagLabel.BackgroundTransparency = 1
+tagLabel.Text = ""
+tagLabel.TextColor3 = Color3.fromRGB(150, 205, 255)
+tagLabel.Font = Enum.Font.GothamBold
+tagLabel.TextSize = 12
+tagLabel.TextXAlignment = Enum.TextXAlignment.Right
+tagLabel.Parent = header
+
+local function refreshTag()
+	local count = player:GetAttribute("EmberCount") or 0
+	tagLabel.Text = string.format("◈ %d/%d   %s", count, totalEmbers, difficultyLabel)
+	tagLabel.TextColor3 = difficultyId == "NIGHTMARE"
+		and Color3.fromRGB(255, 92, 68)
+		or Color3.fromRGB(150, 205, 255)
+end
+refreshTag()
+
+local function applyDifficulty(id)
+	local difficulty = Config.Difficulties[id] or Config.Difficulties[Config.DefaultDifficulty]
+	difficultyId = difficulty.id
+	difficultyLabel = difficulty.label
+	deathPenaltySeconds = difficulty.DeathPenaltySeconds
+	refreshTag()
+end
+applyDifficulty(player:GetAttribute("Difficulty"))
 
 local sealsLabel = Instance.new("TextLabel")
 sealsLabel.Position = UDim2.fromOffset(14, 25)
@@ -388,9 +433,162 @@ local function startFirstRunTutorial()
 
 	task.delay(6.6, function()
 		if token == tutorialRunToken and not escapeShown and player:GetAttribute("RunExpired") ~= true then
-			showToast(string.format("死亡すると残り時間 -%d秒", Config.DeathPenaltySeconds))
+			showToast(string.format("死亡すると残り時間 -%d秒", deathPenaltySeconds))
 		end
 	end)
+end
+
+-- Audio: every slot in Config.Audio is optional; an empty id simply stays silent.
+local audioFolder = SoundService:FindFirstChild("HellAscentAudio")
+if audioFolder then
+	audioFolder:Destroy()
+end
+audioFolder = Instance.new("Folder")
+audioFolder.Name = "HellAscentAudio"
+audioFolder.Parent = SoundService
+
+local sounds = {}
+local soundVolumes = {
+	Ambience = 0.35,
+	Heartbeat = 0.5,
+	SealBreak = 0.9,
+	EmberPickup = 0.7,
+	Checkpoint = 0.7,
+	WardenStrike = 1,
+	WardenAwake = 0.9,
+	AshRift = 0.9,
+	GateOpen = 0.9,
+	DeathToll = 0.9,
+	Escape = 0.9,
+}
+
+for name, volume in pairs(soundVolumes) do
+	local id = Config.Audio[name]
+	if id and id ~= "" then
+		local sound = Instance.new("Sound")
+		sound.Name = name
+		sound.SoundId = id
+		sound.Volume = volume
+		sound.Looped = name == "Ambience" or name == "Heartbeat"
+		sound.Parent = audioFolder
+		sounds[name] = sound
+	end
+end
+
+local function playSound(name)
+	local sound = sounds[name]
+	if sound then
+		sound.TimePosition = 0
+		sound:Play()
+	end
+end
+
+local function startAmbience()
+	local ambience = sounds.Ambience
+	if ambience and not ambience.IsPlaying then
+		ambience:Play()
+	end
+end
+
+local function stopLoopingSounds()
+	for _, name in ipairs({"Ambience", "Heartbeat"}) do
+		local sound = sounds[name]
+		if sound then
+			sound:Stop()
+		end
+	end
+end
+
+local function updateHeartbeat()
+	local heartbeat = sounds.Heartbeat
+	if not heartbeat then
+		return
+	end
+
+	if fearStrength > 0.04 then
+		heartbeat.Volume = 0.15 + fearStrength * 0.85
+		heartbeat.PlaybackSpeed = 0.85 + fearStrength * 0.9
+		if not heartbeat.IsPlaying then
+			heartbeat:Play()
+		end
+	elseif heartbeat.IsPlaying then
+		heartbeat:Stop()
+	end
+end
+
+-- Haptics: gamepad rumble only, never touches phones or keyboards.
+local function setRumbleMotors(large, small)
+	local gamepad = Enum.UserInputType.Gamepad1
+	pcall(function()
+		if HapticService:IsVibrationSupported(gamepad) then
+			if HapticService:IsMotorSupported(gamepad, Enum.VibrationMotor.Large) then
+				HapticService:SetMotor(gamepad, Enum.VibrationMotor.Large, large)
+			end
+			if HapticService:IsMotorSupported(gamepad, Enum.VibrationMotor.Small) then
+				HapticService:SetMotor(gamepad, Enum.VibrationMotor.Small, small)
+			end
+		end
+	end)
+end
+
+local function gamepadRumble(large, small, duration)
+	if UserInputService:GetLastInputType() ~= Enum.UserInputType.Gamepad1 then
+		return
+	end
+
+	setRumbleMotors(large, small)
+	rumbleLockUntil = os.clock() + duration
+	local lockAtSchedule = rumbleLockUntil
+	task.delay(duration, function()
+		if rumbleLockUntil == lockAtSchedule then
+			setRumbleMotors(0, 0)
+		end
+	end)
+end
+
+local function updateProximityRumble(now)
+	if now < rumbleLockUntil or now - lastProximityRumble < 0.25 then
+		return
+	end
+	lastProximityRumble = now
+
+	if UserInputService:GetLastInputType() ~= Enum.UserInputType.Gamepad1 then
+		return
+	end
+
+	local level = fearStrength > 0.05 and math.floor(fearStrength * 0.45 * 20 + 0.5) / 20 or 0
+	if level ~= lastProximityLevel then
+		lastProximityLevel = level
+		setRumbleMotors(0, level)
+	end
+end
+
+local function shakeCamera(power, duration)
+	shakePower = power
+	shakeStartedAt = os.clock()
+	shakeUntil = shakeStartedAt + duration
+end
+
+local function updateShake(now)
+	local character = player.Character
+	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+	if not humanoid then
+		return
+	end
+
+	if now < shakeUntil then
+		local fade = (shakeUntil - now) / math.max(0.01, shakeUntil - shakeStartedAt)
+		local magnitude = shakePower * fade
+		humanoid.CameraOffset = Vector3.new(
+			(math.random() - 0.5) * 2 * magnitude,
+			(math.random() - 0.5) * 2 * magnitude,
+			0
+		)
+		isShaking = true
+	elseif isShaking then
+		humanoid.CameraOffset = Vector3.zero
+		isShaking = false
+	end
 end
 
 local function flashDamage()
@@ -563,6 +761,13 @@ local function applyEscalationStage(stage, announce)
 	end
 end
 
+local gradeColors = {
+	S = Color3.fromRGB(255, 208, 96),
+	A = Color3.fromRGB(240, 130, 78),
+	B = Color3.fromRGB(205, 176, 158),
+	C = Color3.fromRGB(150, 138, 132),
+}
+
 local function showEscape(payload)
 	if escapeShown then
 		return
@@ -574,6 +779,18 @@ local function showEscape(payload)
 		endingFrame = nil
 	end
 
+	payload = payload or {}
+	local clearSeconds = payload.clearSeconds or 0
+	local bestSeconds = payload.bestSeconds or clearSeconds
+	local deaths = payload.deaths or 0
+	local escapes = payload.escapes or 1
+	local newBest = payload.newBest == true
+	local grade = payload.grade or "C"
+	local embers = payload.embers or 0
+	local emberTotal = payload.totalEmbers or totalEmbers
+	local clearedDifficulty = payload.difficulty or difficultyId
+	local nightmareUnlocked = payload.nightmareUnlocked == true
+
 	local ending = Instance.new("Frame")
 	ending.Name = "EscapeEnding"
 	ending.Size = UDim2.fromScale(1, 1)
@@ -584,83 +801,147 @@ local function showEscape(payload)
 	ending.Parent = gui
 	endingFrame = ending
 
-	local endingTitle = Instance.new("TextLabel")
-	endingTitle.AnchorPoint = Vector2.new(0.5, 0.5)
-	endingTitle.Position = UDim2.new(0.5, 0, 0.45, 0)
-	endingTitle.Size = UDim2.new(0.9, 0, 0, 82)
-	endingTitle.BackgroundTransparency = 1
-	endingTitle.Text = "第1層 脱出"
-	endingTitle.TextColor3 = Color3.fromRGB(230, 209, 197)
-	endingTitle.TextTransparency = 1
-	endingTitle.Font = Enum.Font.GothamBlack
+	local fadeTargets = {}
+
+	local function addLabel(name, text, position, size, font, textSize, color)
+		local label = Instance.new("TextLabel")
+		label.Name = name
+		label.AnchorPoint = Vector2.new(0.5, 0.5)
+		label.Position = position
+		label.Size = size
+		label.BackgroundTransparency = 1
+		label.Text = text
+		label.TextColor3 = color
+		label.TextTransparency = 1
+		label.Font = font
+		label.TextSize = textSize
+		label.TextWrapped = true
+		label.ZIndex = 31
+		label.Parent = ending
+		table.insert(fadeTargets, label)
+		return label
+	end
+
+	local endingTitle = addLabel(
+		"Title",
+		"第1層 脱出",
+		UDim2.new(0.5, 0, 0.17, 0),
+		UDim2.new(0.9, 0, 0, 64),
+		Enum.Font.GothamBlack,
+		40,
+		Color3.fromRGB(230, 209, 197)
+	)
 	endingTitle.TextScaled = true
-	endingTitle.ZIndex = 31
-	endingTitle.Parent = ending
 
-	local endingSub = Instance.new("TextLabel")
-	endingSub.AnchorPoint = Vector2.new(0.5, 0)
-	endingSub.Position = UDim2.new(0.5, 0, 0.53, 0)
-	endingSub.Size = UDim2.new(0.86, 0, 0, 92)
-	endingSub.BackgroundTransparency = 1
+	addLabel(
+		"RankCaption",
+		string.format("RANK  ·  %s", payload.difficultyLabel or clearedDifficulty),
+		UDim2.new(0.5, 0, 0.28, 0),
+		UDim2.new(0.8, 0, 0, 20),
+		Enum.Font.GothamBold,
+		14,
+		clearedDifficulty == "NIGHTMARE" and Color3.fromRGB(255, 92, 68) or Color3.fromRGB(177, 136, 118)
+	)
 
-	local clearSeconds = payload and payload.clearSeconds or 0
-	local bestSeconds = payload and payload.bestSeconds or clearSeconds
-	local deaths = payload and payload.deaths or 0
-	local escapes = payload and payload.escapes or 1
-	local newBest = payload and payload.newBest == true
+	local gradeLabel = addLabel(
+		"Grade",
+		grade,
+		UDim2.new(0.5, 0, 0.40, 0),
+		UDim2.fromOffset(120, 110),
+		Enum.Font.GothamBlack,
+		96,
+		gradeColors[grade] or gradeColors.C
+	)
+	gradeLabel.TextStrokeColor3 = Color3.fromRGB(40, 8, 6)
+	gradeLabel.TextStrokeTransparency = 0.6
+
 	local bestLine
-
 	if newBest and escapes > 1 then
 		bestLine = string.format("NEW BEST  %s   /   脱出 %d回", formatTime(bestSeconds), escapes)
 	else
 		bestLine = string.format("BEST  %s   /   脱出 %d回", formatTime(bestSeconds), escapes)
 	end
 
-	endingSub.Text = string.format(
-		"クリア %s   /   死亡 %d回\n%s",
-		formatTime(clearSeconds),
-		deaths,
-		bestLine
+	local summaryLines = {
+		string.format(
+			"クリア %s   /   死亡 %d回   /   魂火 %d/%d",
+			formatTime(clearSeconds),
+			deaths,
+			embers,
+			emberTotal
+		),
+		bestLine,
+	}
+	if payload.newlyUnlocked then
+		table.insert(summaryLines, "☠ NIGHTMARE 解放")
+	end
+
+	addLabel(
+		"Summary",
+		table.concat(summaryLines, "\n"),
+		UDim2.new(0.5, 0, 0.58, 0),
+		UDim2.new(0.9, 0, 0, 84),
+		Enum.Font.GothamBold,
+		17,
+		newBest and escapes > 1 and Color3.fromRGB(232, 128, 82) or Color3.fromRGB(177, 88, 66)
 	)
-	endingSub.TextColor3 = newBest and escapes > 1
-		and Color3.fromRGB(232, 128, 82)
-		or Color3.fromRGB(177, 88, 66)
-	endingSub.TextTransparency = 1
-	endingSub.Font = Enum.Font.GothamBold
-	endingSub.TextSize = 18
-	endingSub.TextWrapped = true
-	endingSub.ZIndex = 31
-	endingSub.Parent = ending
 
-	local retry = Instance.new("TextButton")
-	retry.AnchorPoint = Vector2.new(0.5, 0)
-	retry.Position = UDim2.new(0.5, 0, 0.69, 0)
-	retry.Size = UDim2.new(0, 220, 0, 48)
-	retry.BackgroundColor3 = Color3.fromRGB(54, 32, 29)
-	retry.BackgroundTransparency = 0.08
-	retry.BorderSizePixel = 0
-	retry.Text = "もう一度 / RETRY"
-	retry.TextColor3 = Color3.fromRGB(235, 211, 197)
-	retry.Font = Enum.Font.GothamBold
-	retry.TextSize = 17
-	retry.AutoButtonColor = true
-	retry.ZIndex = 31
-	retry.Parent = ending
+	local buttons = {}
+	local function addButton(text, yScale, targetDifficulty, accent)
+		local button = Instance.new("TextButton")
+		button.AnchorPoint = Vector2.new(0.5, 0.5)
+		button.Position = UDim2.new(0.5, 0, yScale, 0)
+		button.Size = UDim2.fromOffset(240, 48)
+		button.BackgroundColor3 = accent and Color3.fromRGB(78, 26, 22) or Color3.fromRGB(54, 32, 29)
+		button.BackgroundTransparency = 0.08
+		button.BorderSizePixel = 0
+		button.Text = text
+		button.TextColor3 = Color3.fromRGB(235, 211, 197)
+		button.Font = Enum.Font.GothamBold
+		button.TextSize = 16
+		button.AutoButtonColor = true
+		button.ZIndex = 31
+		button.Parent = ending
 
-	local retryCorner = Instance.new("UICorner")
-	retryCorner.CornerRadius = UDim.new(0, 10)
-	retryCorner.Parent = retry
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 10)
+		corner.Parent = button
 
-	retry.Activated:Connect(function()
-		retry.Active = false
-		retry.AutoButtonColor = false
-		retry.Text = "再挑戦を開始..."
-		event:FireServer("restartRun")
-	end)
+		table.insert(buttons, button)
+		button.Activated:Connect(function()
+			for _, other in ipairs(buttons) do
+				other.Active = false
+				other.AutoButtonColor = false
+			end
+			button.Text = "再挑戦を開始..."
+			event:FireServer("restartRun", targetDifficulty)
+		end)
+		return button
+	end
+
+	addButton("もう一度 / RETRY  [" .. clearedDifficulty .. "]", 0.76, clearedDifficulty, false)
+	if nightmareUnlocked then
+		if clearedDifficulty == "NIGHTMARE" then
+			addButton("NORMALに戻る", 0.85, "NORMAL", false)
+		else
+			addButton("☠ NIGHTMARE に挑む", 0.85, "NIGHTMARE", true)
+		end
+	end
+
+	addLabel(
+		"Teaser",
+		"第2層への門は、まだ眠っている…",
+		UDim2.new(0.5, 0, 0.94, 0),
+		UDim2.new(0.9, 0, 0, 20),
+		Enum.Font.Gotham,
+		13,
+		Color3.fromRGB(120, 98, 90)
+	)
 
 	TweenService:Create(ending, TweenInfo.new(0.8), {BackgroundTransparency = 0.08}):Play()
-	TweenService:Create(endingTitle, TweenInfo.new(0.8), {TextTransparency = 0}):Play()
-	TweenService:Create(endingSub, TweenInfo.new(0.8), {TextTransparency = 0}):Play()
+	for _, label in ipairs(fadeTargets) do
+		TweenService:Create(label, TweenInfo.new(0.8), {TextTransparency = 0}):Play()
+	end
 end
 
 local guideFolder = workspace:FindFirstChild("HellAscentLocalGuides")
@@ -729,6 +1010,33 @@ local function resetSealVisuals()
 		applySealVisualState(sealInfo.id, false)
 	end
 end
+
+local function applyEmberVisuals()
+	local folder = hellWorld and hellWorld:FindFirstChild("SoulEmbers")
+	if not folder then
+		return
+	end
+
+	local mask = player:GetAttribute("EmberMask") or ""
+	for index = 1, totalEmbers do
+		local ember = folder:FindFirstChild("SoulEmber_" .. index)
+		if ember then
+			local collected = string.sub(mask, index, index) == "1"
+			ember.LocalTransparencyModifier = collected and 1 or 0
+			for _, child in ipairs(ember:GetChildren()) do
+				if child:IsA("PointLight") or child:IsA("ParticleEmitter") then
+					child.Enabled = not collected
+				end
+			end
+		end
+	end
+end
+
+hellWorld.ChildAdded:Connect(function(child)
+	if child.Name == "SoulEmbers" then
+		task.defer(applyEmberVisuals)
+	end
+end)
 
 local function rebuildBrokenSealsFromAttributes()
 	brokenSeals = {}
@@ -926,6 +1234,7 @@ local function reportWardenObserved(observed, now, broken)
 end
 
 local function updateWardenFear(now)
+	fearStrength = 0
 	if player:GetAttribute("RunExpired") == true
 		or player:GetAttribute("LayerOneEscaped") == true
 	then
@@ -1001,6 +1310,7 @@ local function updateWardenFear(now)
 	local proximity = 1 - math.clamp((distance - criticalRange) / span, 0, 1)
 	local visibilityFactor = visible and 1 or 0.5
 	local strength = math.clamp(proximity * visibilityFactor, 0, 1)
+	fearStrength = strength
 	local pulse = 0.5 + 0.5 * math.sin(now * (2.4 + strength * 4.2))
 
 	wardenPressure.BackgroundTransparency = math.clamp(
@@ -1140,6 +1450,7 @@ end
 
 event.OnClientEvent:Connect(function(kind, payload)
 	if kind == "checkpoint" then
+		playSound("Checkpoint")
 		local checkpointName = payload.name or "SOUL ANCHOR"
 		showToast(string.format(
 			"復活地点を更新: %s  [%d/%d]  /  HP・スタミナ回復",
@@ -1155,10 +1466,26 @@ event.OnClientEvent:Connect(function(kind, payload)
 		end
 		applyEscalationStage(payload.count or 0, true)
 		showToast(string.format("封印を破壊  %d / %d", payload.count, payload.total))
+		playSound("SealBreak")
+		shakeCamera(0.35, 0.5)
+		gamepadRumble(0.6, 0.3, 0.35)
 		refreshRunStatus()
+
+		if payload.lore then
+			local runToken = tutorialRunToken
+			task.delay(2.4, function()
+				if runToken == tutorialRunToken
+					and not escapeShown
+					and player:GetAttribute("RunExpired") ~= true
+				then
+					showToast(payload.lore)
+				end
+			end)
+		end
 	elseif kind == "sealAlreadyBroken" then
 		showToast("この封印はすでに壊れている")
 	elseif kind == "wardenAwakened" then
+		playSound("WardenAwake")
 		showToast("門番が目を覚ました")
 	elseif kind == "wardenHunting" then
 		showToast("見ても止まらない。視線で鈍らせろ")
@@ -1166,7 +1493,23 @@ event.OnClientEvent:Connect(function(kind, payload)
 		showToast("視線はもう効かない。BLACK GATEへ走れ")
 	elseif kind == "wardenStrike" then
 		flashDamage()
+		playSound("WardenStrike")
+		shakeCamera(0.55, 0.4)
+		gamepadRumble(1, 0.8, 0.3)
 		showToast("WARDENの攻撃を受けた")
+	elseif kind == "ventStrike" then
+		flashDamage()
+		shakeCamera(0.45, 0.35)
+		gamepadRumble(0.8, 0.6, 0.25)
+		showToast("噴き出す炎に焼かれた  /  光り始めたら離れろ")
+	elseif kind == "emberCollected" then
+		playSound("EmberPickup")
+		showToast(string.format(
+			"魂火  %d / %d   +%d秒",
+			payload.count or 0,
+			payload.total or totalEmbers,
+			payload.bonus or 0
+		))
 	elseif kind == "sprintExhausted" then
 		showToast("息が切れた。スタミナを回復しろ")
 	elseif kind == "voidRescue" then
@@ -1174,6 +1517,7 @@ event.OnClientEvent:Connect(function(kind, payload)
 		showToast("地形外からSOUL ANCHORへ救済  /  HP・スタミナ回復")
 	elseif kind == "ashRiftUsed" then
 		flashDamage()
+		playSound("AshRift")
 		showToast(string.format("ASH RIFT使用  /  HP -%d  /  前方へ転移", payload.cost or Config.AshRift.HealthCost))
 	elseif kind == "ashRiftUnavailable" then
 		if payload.reason == "used" then
@@ -1193,12 +1537,16 @@ event.OnClientEvent:Connect(function(kind, payload)
 			math.floor((payload and payload.stamina) or Config.FinalRun.MinimumStartStamina)
 		))
 	elseif kind == "gateOpen" then
+		playSound("GateOpen")
 		refreshRunStatus()
 	elseif kind == "gateLocked" then
 		showToast(string.format("封印が足りない  %d / %d", payload.count, payload.total))
 	elseif kind == "deathPenalty" then
+		playSound("DeathToll")
+		shakeCamera(0.5, 0.45)
 		showToast(string.format("死亡: -%d秒  /  スタミナ回復  /  %d秒安全", payload.seconds, Config.RespawnGraceSeconds))
 	elseif kind == "expired" then
+		stopLoopingSounds()
 		stageBannerSerial += 1
 		stageBanner.TextTransparency = 1
 		stageBanner.TextStrokeTransparency = 1
@@ -1209,6 +1557,12 @@ event.OnClientEvent:Connect(function(kind, payload)
 		staminaPanel.Visible = false
 		showToast("魂が尽きた。最初から再挑戦")
 	elseif kind == "runStart" then
+		applyDifficulty(payload and payload.difficulty)
+		if payload and payload.totalEmbers then
+			totalEmbers = payload.totalEmbers
+		end
+		applyEmberVisuals()
+		startAmbience()
 		stageBannerSerial += 1
 		stageBanner.TextTransparency = 1
 		stageBanner.TextStrokeTransparency = 1
@@ -1244,6 +1598,8 @@ event.OnClientEvent:Connect(function(kind, payload)
 
 		startFirstRunTutorial()
 	elseif kind == "escaped" then
+		stopLoopingSounds()
+		playSound("Escape")
 		stageBannerSerial += 1
 		stageBanner.TextTransparency = 1
 		stageBanner.TextStrokeTransparency = 1
@@ -1266,6 +1622,12 @@ for _, attributeName in ipairs({
 	player:GetAttributeChangedSignal(attributeName):Connect(refreshRunStatus)
 end
 
+player:GetAttributeChangedSignal("EmberMask"):Connect(applyEmberVisuals)
+player:GetAttributeChangedSignal("EmberCount"):Connect(refreshTag)
+player:GetAttributeChangedSignal("Difficulty"):Connect(function()
+	applyDifficulty(player:GetAttribute("Difficulty"))
+end)
+
 for _, sealInfo in ipairs(Config.Seals) do
 	player:GetAttributeChangedSignal("Seal_" .. sealInfo.id):Connect(function()
 		rebuildBrokenSealsFromAttributes()
@@ -1274,7 +1636,9 @@ for _, sealInfo in ipairs(Config.Seals) do
 end
 
 rebuildBrokenSealsFromAttributes()
+applyEmberVisuals()
 refreshRunStatus()
+startAmbience()
 setSprintControlVisible(
 	player:GetAttribute("RunExpired") ~= true
 		and player:GetAttribute("LayerOneEscaped") ~= true
@@ -1298,6 +1662,9 @@ end)
 RunService.RenderStepped:Connect(function()
 	local now = os.clock()
 	updateWardenFear(now)
+	updateHeartbeat()
+	updateProximityRumble(now)
+	updateShake(now)
 
 	local stamina = player:GetAttribute("SprintStamina")
 	if stamina == nil then
